@@ -1,0 +1,138 @@
+TapeDB
+A rewindable database
+16:15 20 Dec 2021
+Tags: database, embedded, state
+Summary: A short overview of TapeDB
+
+Philipp Brüll
+pb@simia.tech
+
+* Notes
+
+Nothing new
+serial state changes are common practice in database engines.
+
+Narrow usecase
+Database that can hold all state in memory.
+
+No distribution
+Currently only single node architecture.
+
+* Schema
+
+.image schema.svg
+
+* Interfaces
+
+.code ../base.go /^type Base/,/^type BaseFactoryFunc/
+
+.code ../state.go /^type State/,/^type StateFactoryFunc/
+
+.code ../change.go /^type Change/,/^type ChangeFactoryFunc/
+
+* Change example
+
+    type NewNotification struct {
+        ID                   string            `json:"id"`
+        EMail                string            `json:"email"`
+        Template             string            `json:"template"`
+        Locale               string            `json:"locale"`
+        Substitutions        map[string]string `json:"substitutions"`
+        CreatedAt            time.Time         `json:"createdAt"`
+        UnlessSentWithinLast time.Duration     `json:"-"`
+        Account              string            `json:"account"`
+    }
+
+    func (c *NewNotification) TypeName() string {
+        return "new-notification"
+    }
+
+* Base example
+
+    type Base struct {
+        NotificationCount           uint `json:"notificationCount"`
+        NotificationDispatchedCount uint `json:"notificationDispatchedCount"`
+        NotificationBouncedCount    uint `json:"notificationBouncedCount"`
+    }
+
+    func (b *Base) Apply(c tapedb.Change) error {
+        switch t := c.(type) {
+        case *NewNotification:
+            b.NotificationCount++
+        case *NotificationDispatched:
+            b.NotificationDispatchedCount++
+        case *NotificationBounced:
+            b.NotificationBouncedCount++
+        default:
+            return fmt.Errorf("apply change of type %T: %w", t, ErrUnknownChangeType)
+        }
+        return nil
+    }
+
+* State example
+
+    func NewState(b tapedb.Base, readLocker sync.Locker) (tapedb.State, error) {
+        return &State{readLocker: readLocker, notifications: map[string]*Notification{}}, nil
+    }
+
+    func (s *State) Apply(c tapedb.Change) error {
+        switch t := c.(type) {
+        case *NewNotification:
+            return s.newNotification(t)
+        ...
+        default:
+            return fmt.Errorf("apply change of type %T: %w", t, ErrUnknownChangeType)
+        }
+    }
+
+    func (s *State) FetchAll() []*Notification {
+        s.readLocker.Lock()
+
+        notifications := ...
+
+        s.readLocker.Unlock()
+        return notifications
+    }
+
+* Model
+
+    package model
+
+    var Static = tapedb.NewModel(
+        tapedb.PrototypeBaseFactory(&Base{}),
+        NewState,
+        tapedb.PrototypeChangeFactory(
+            &NewNotification{},
+            &NotificationDispatched{},
+            &NotificationBounced{},
+        ),
+    )
+
+Instance
+
+    db, err := model.Static.OpenFileDatabase(dbPath)
+    if errors.Is(err, tapedb.ErrDatabaseMissing) {
+        db, err = model.Static.CreateFileDatabase(dbPath)
+    }
+
+* File structure
+
+    Header: Value
+
+    {"notificationCount":2,"notificationDispatchedCount":1,"notificationBouncedCount":0}
+    notification-dispatched {"id":"p8MWiCnnKb3PQVz4kgqHjL","at":"2021-12-20T17:19:01.701015172+01:00"}
+    new-notification {"id":"BTZQGmRWfEiP8i3Mayp2PB","email":"test@posteo.de","template":"test","locale":"de","substitutions":{"Name":"Test"},"createdAt":"2021-12-20T17:19:03.2998405+01:00","account":"default"}
+    notification-dispatched {"id":"BTZQGmRWfEiP8i3Mayp2PB","at":"2021-12-20T17:19:03.714157118+01:00"}
+    new-notification {"id":"pz4gyL46oqPuBR58VZVcn","email":"test@posteo.de","template":"test","locale":"de","substitutions":{"Name":"Test"},"createdAt":"2021-12-20T17:19:07.620341225+01:00","account":"default"}
+    notification-dispatched {"id":"pz4gyL46oqPuBR58VZVcn","at":"2021-12-20T17:19:07.729013912+01:00"}
+
+* Attachments
+
+    change := &model.AddAttachment{
+        ID:          tapedb.GenerateUUID(),
+        ContentType: "text/plain",
+    }
+
+    if err := filedb.Apply(change, tapedb.NewPayload(change.ID, r)); err != nil {
+        return err
+    }

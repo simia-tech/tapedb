@@ -1,0 +1,20 @@
+<svg width="569" height="216" xmlns="http://www.w3.org/2000/svg">
+
+ <g>
+  <title>Layer 1</title>
+  <g id="svg_27">
+   <ellipse ry="73" rx="73" id="svg_1" cy="86" cx="88" stroke="#000" fill="#B6C7EA"/>
+   <ellipse ry="73" rx="73" id="svg_2" cy="89" cx="482" stroke="#000" fill="#fff"/>
+   <text xml:space="preserve" text-anchor="start" font-family="'Besley'" font-size="24" id="svg_6" y="96" x="61" stroke-width="0" stroke="#000" fill="#000000">Base</text>
+   <text xml:space="preserve" text-anchor="start" font-family="'Besley'" font-size="24" id="svg_7" y="100" x="452" stroke-width="0" stroke="#000" fill="#000000">State</text>
+   <rect rx="15" id="svg_8" height="33" width="92.00001" y="171.99999" x="84" stroke="#000" fill="#B6C7EA"/>
+   <rect rx="15" id="svg_14" height="33" width="92.00001" y="171.99999" x="388" stroke="#000" fill="#B6C7EA"/>
+   <rect rx="15" id="svg_16" height="33" width="92.00001" y="171.99999" x="286" stroke="#000" fill="#B6C7EA"/>
+   <rect rx="15" id="svg_18" height="33" width="92.00001" y="171.99999" x="185" stroke="#000" fill="#B6C7EA"/>
+   <text transform="matrix(0.695731, 0, 0, 0.722083, 69.3733, 103.912)" xml:space="preserve" text-anchor="start" font-family="'Besley'" font-size="24" stroke-width="0" id="svg_21" y="124.83887" x="41.14617" stroke="#000" fill="#000000">Change</text>
+   <text transform="matrix(0.695731, 0, 0, 0.722083, 69.3733, 103.912)" xml:space="preserve" text-anchor="start" font-family="'Besley'" font-size="24" stroke-width="0" id="svg_22" y="125.90491" x="187.75455" stroke="#000" fill="#000000">Change</text>
+   <text transform="matrix(0.695731, 0, 0, 0.722083, 69.3733, 103.912)" xml:space="preserve" text-anchor="start" font-family="'Besley'" font-size="24" stroke-width="0" id="svg_23" y="127.50394" x="334.36295" stroke="#000" fill="#000000">Change</text>
+   <text transform="matrix(0.695731, 0, 0, 0.722083, 69.3733, 103.912)" xml:space="preserve" text-anchor="start" font-family="'Besley'" font-size="24" stroke-width="0" id="svg_26" y="128.56999" x="482.40867" stroke="#000" fill="#000000">Change</text>
+  </g>
+ </g>
+</svg>
