@@ -23,7 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/simia-tech/tapedb/chunkio"
+	"github.com/simia-tech/tapedb/v2/chunkio"
 )
 
 var (

@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/simia-tech/tapedb"
+	"github.com/simia-tech/tapedb/v2"
 )
 
 func TestDatabaseCreate(t *testing.T) {

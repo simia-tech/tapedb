@@ -26,7 +26,7 @@ import (
 	"net/textproto"
 	"sync"
 
-	"github.com/simia-tech/tapedb/chunkio"
+	"github.com/simia-tech/tapedb/v2/chunkio"
 )
 
 var RandomNonce = func() []byte {

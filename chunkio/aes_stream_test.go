@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/simia-tech/tapedb/chunkio"
+	"github.com/simia-tech/tapedb/v2/chunkio"
 )
 
 func TestAESStreamWriter(t *testing.T) {

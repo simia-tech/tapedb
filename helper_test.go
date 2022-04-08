@@ -25,7 +25,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/simia-tech/tapedb"
+	"github.com/simia-tech/tapedb/v2"
 )
 
 var model = tapedb.NewModel(
