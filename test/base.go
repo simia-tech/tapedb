@@ -12,10 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tapedb
+package test
 
-type Database[B Base, S State] interface {
-	Base() B
-	State() S
-	Apply(Change) error
+import (
+	"encoding/json"
+	"io"
+
+	"github.com/simia-tech/tapedb/v2"
+)
+
+type Base struct {
+	Value int `json:"value"`
+}
+
+func NewBase() *Base {
+	return &Base{Value: 0}
+}
+
+func (b *Base) ReadFrom(r io.Reader) (int64, error) {
+	return 0, json.NewDecoder(r).Decode(b)
+}
+
+func (b *Base) WriteTo(w io.Writer) (int64, error) {
+	return 0, json.NewEncoder(w).Encode(b)
+}
+
+func (b *Base) Apply(c tapedb.Change) error {
+	return nil
 }

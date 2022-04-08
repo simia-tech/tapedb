@@ -12,10 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tapedb
+package test
 
-type Database[B Base, S State] interface {
-	Base() B
-	State() S
-	Apply(Change) error
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/simia-tech/tapedb/v2"
+)
+
+func TestDatabase(t *testing.T, db tapedb.Database[*Base, *State]) {
+	t.Run("Apply", func(t *testing.T) {
+		before := db.State().Counter
+
+		require.NoError(t, db.Apply(&ChangeCounterInc{Value: 1}))
+
+		assert.Equal(t, before+1, db.State().Counter)
+	})
 }

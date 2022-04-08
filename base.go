@@ -14,14 +14,13 @@
 
 package tapedb
 
+import (
+	"io"
+)
+
 type Base interface {
+	io.ReaderFrom
+	io.WriterTo
+
 	Apply(Change) error
-}
-
-type BaseFactoryFunc func() (Base, error)
-
-func PrototypeBaseFactory(prototype Base) BaseFactoryFunc {
-	return func() (Base, error) {
-		return newInstance(prototype).(Base), nil
-	}
 }

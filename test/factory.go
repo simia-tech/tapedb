@@ -12,10 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tapedb
+package test
 
-type Database[B Base, S State] interface {
-	Base() B
-	State() S
-	Apply(Change) error
+import (
+	"fmt"
+
+	"github.com/simia-tech/tapedb/v2"
+)
+
+type Factory struct{}
+
+func NewFactory() tapedb.Factory[*Base, *State] {
+	return &Factory{}
+}
+
+func (f *Factory) NewBase() *Base {
+	return NewBase()
+}
+
+func (f *Factory) NewState(base *Base) *State {
+	return NewState(base)
+}
+
+func (f *Factory) NewChange(typeName string) (tapedb.Change, error) {
+	switch typeName {
+	case "counter-inc":
+		return &ChangeCounterInc{}, nil
+	}
+	return nil, fmt.Errorf("change type [%s]: %w", typeName, tapedb.ErrUnknownChangeType)
 }

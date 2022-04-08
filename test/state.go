@@ -12,10 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tapedb
+package test
 
-type Database[B Base, S State] interface {
-	Base() B
-	State() S
-	Apply(Change) error
+import "github.com/simia-tech/tapedb/v2"
+
+type State struct {
+	Counter int
+}
+
+func NewState(b *Base) *State {
+	return &State{Counter: b.Value}
+}
+
+func (s *State) Apply(c tapedb.Change) error {
+	switch t := c.(type) {
+	case *ChangeCounterInc:
+		s.Counter += t.Value
+	}
+	return nil
 }

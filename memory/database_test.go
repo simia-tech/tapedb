@@ -12,10 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tapedb
+package memory_test
 
-type Database[B Base, S State] interface {
-	Base() B
-	State() S
-	Apply(Change) error
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/simia-tech/tapedb/v2/memory"
+	"github.com/simia-tech/tapedb/v2/test"
+)
+
+func TestMemory(t *testing.T) {
+	db, err := memory.NewDatabase[*test.Base, *test.State](test.NewFactory())
+	require.NoError(t, err)
+
+	test.TestDatabase(t, db)
 }

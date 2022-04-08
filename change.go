@@ -14,26 +14,11 @@
 
 package tapedb
 
-import (
-	"fmt"
-)
+import "io"
 
 type Change interface {
+	io.ReaderFrom
+	io.WriterTo
+
 	TypeName() string
-}
-
-type ChangeFactoryFunc func(string) (Change, error)
-
-func PrototypeChangeFactory(prototypes ...Change) ChangeFactoryFunc {
-	pm := map[string]Change{}
-	for _, prototype := range prototypes {
-		pm[prototype.TypeName()] = prototype
-	}
-	return func(typeName string) (Change, error) {
-		prototype, ok := pm[typeName]
-		if !ok {
-			return nil, fmt.Errorf("new change of type %s: %w", typeName, ErrUnknownType)
-		}
-		return newInstance(prototype).(Change), nil
-	}
 }

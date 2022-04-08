@@ -14,8 +14,14 @@
 
 package tapedb
 
-type Database[B Base, S State] interface {
-	Base() B
-	State() S
-	Apply(Change) error
+import "errors"
+
+var (
+	ErrUnknownChangeType = errors.New("unknown change type")
+)
+
+type Factory[B Base, S State] interface {
+	NewBase() B
+	NewState(B) S
+	NewChange(string) (Change, error)
 }

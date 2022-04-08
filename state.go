@@ -14,10 +14,6 @@
 
 package tapedb
 
-import "sync"
-
 type State interface {
 	Apply(Change) error
 }
-
-type StateFactoryFunc func(Base, sync.Locker) (State, error)
