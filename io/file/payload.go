@@ -12,25 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package memory_test
+package file
 
 import (
-	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/simia-tech/tapedb/v2/memory"
-	"github.com/simia-tech/tapedb/v2/test"
+	"errors"
+	"io"
 )
 
-func TestMemory(t *testing.T) {
-	t.Run("NewDatabase", func(t *testing.T) {
-		db, err := memory.NewDatabase[*test.Base, *test.State](test.NewFactory())
-		require.NoError(t, err)
+var (
+	ErrPayloadIDAlreadyExists = errors.New("payload id already exists")
+	ErrPayloadMissing         = errors.New("payload missing")
+)
 
-		require.NoError(t, db.Apply(&test.ChangeCounterInc{Value: 1}))
+type Payload struct {
+	id string
+	r  io.Reader
+}
 
-		assert.Equal(t, 1, db.State().Counter)
-	})
+func NewPayload(id string, r io.Reader) Payload {
+	return Payload{
+		id: id,
+		r:  r,
+	}
+}
+
+func (p *Payload) ID() string {
+	return p.id
+}
+
+type PayloadContainer interface {
+	PayloadIDs() []string
 }

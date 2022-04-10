@@ -12,34 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tapedb
+package file_test
 
 import (
-	"errors"
-	"io"
+	"io/ioutil"
+	"os"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-var (
-	ErrPayloadIDAlreadyExists = errors.New("payload id already exists")
-	ErrPayloadMissing         = errors.New("payload missing")
-)
-
-type Payload struct {
-	id string
-	r  io.Reader
-}
-
-func NewPayload(id string, r io.Reader) Payload {
-	return Payload{
-		id: id,
-		r:  r,
+func makeTempDir(tb testing.TB) (string, func()) {
+	path, err := ioutil.TempDir("", "tapedb-")
+	require.NoError(tb, err)
+	return path, func() {
+		require.NoError(tb, os.RemoveAll(path))
 	}
 }
 
-func (p *Payload) ID() string {
-	return p.id
+func makeFile(tb testing.TB, path, content string) {
+	require.NoError(tb, ioutil.WriteFile(path, []byte(content), 0600))
 }
 
-type PayloadContainer interface {
-	PayloadIDs() []string
+func readFile(tb testing.TB, path string) string {
+	data, err := ioutil.ReadFile(path)
+	require.NoError(tb, err)
+	return string(data)
 }

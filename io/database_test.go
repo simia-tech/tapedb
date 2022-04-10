@@ -27,7 +27,7 @@ import (
 )
 
 func TestIO(t *testing.T) {
-	t.Run("New", func(t *testing.T) {
+	t.Run("NewDatabase", func(t *testing.T) {
 		logBuffer := bytes.Buffer{}
 
 		db, err := io.NewDatabase[*test.Base, *test.State](
@@ -40,12 +40,12 @@ func TestIO(t *testing.T) {
 		assert.Equal(t, "counter-inc {\"value\":1}\n", logBuffer.String())
 	})
 
-	t.Run("Read", func(t *testing.T) {
+	t.Run("OpenDatabase", func(t *testing.T) {
 		base := "{\"value\":20}\n"
 		log := "counter-inc {\"value\":2}\ncounter-inc {\"value\":1}\n"
 		logBuffer := bytes.Buffer{}
 
-		db, err := io.ReadDatabase[*test.Base, *test.State](
+		db, err := io.OpenDatabase[*test.Base, *test.State](
 			test.NewFactory(),
 			strings.NewReader(base),
 			strings.NewReader(log),

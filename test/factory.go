@@ -22,7 +22,7 @@ import (
 
 type Factory struct{}
 
-func NewFactory() tapedb.Factory[*Base, *State] {
+func NewFactory() *Factory {
 	return &Factory{}
 }
 

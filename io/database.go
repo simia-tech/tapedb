@@ -29,15 +29,20 @@ var (
 )
 
 type Database[B tapedb.Base, S tapedb.State] struct {
-	base  B
-	state S
-	logW  io.Writer
+	base   B
+	state  S
+	logW   io.Writer
+	logLen int
 }
 
-func NewDatabase[B tapedb.Base, S tapedb.State](
-	f tapedb.Factory[B, S],
+func NewDatabase[
+	B tapedb.Base,
+	S tapedb.State,
+	F tapedb.Factory[B, S],
+](
+	f F,
 	logW io.Writer,
-) (tapedb.Database[B, S], error) {
+) (*Database[B, S], error) {
 	base := f.NewBase()
 	state := f.NewState(base)
 
@@ -48,11 +53,15 @@ func NewDatabase[B tapedb.Base, S tapedb.State](
 	}, nil
 }
 
-func ReadDatabase[B tapedb.Base, S tapedb.State](
-	f tapedb.Factory[B, S],
+func OpenDatabase[
+	B tapedb.Base,
+	S tapedb.State,
+	F tapedb.Factory[B, S],
+](
+	f F,
 	baseR, logR io.Reader,
 	logW io.Writer,
-) (tapedb.Database[B, S], error) {
+) (*Database[B, S], error) {
 	base := f.NewBase()
 
 	if _, err := base.ReadFrom(baseR); err != nil {
@@ -61,9 +70,14 @@ func ReadDatabase[B tapedb.Base, S tapedb.State](
 
 	state := f.NewState(base)
 
+	logLen := 0
 	scanner := bufio.NewScanner(logR)
 	for scanner.Scan() {
-		change, err := readChange(f, scanner.Bytes())
+		if len(scanner.Bytes()) == 0 {
+			continue
+		}
+
+		change, err := readChange[B, S, F](f, scanner.Bytes())
 		if err != nil {
 			return nil, err
 		}
@@ -71,12 +85,15 @@ func ReadDatabase[B tapedb.Base, S tapedb.State](
 		if err := state.Apply(change); err != nil {
 			return nil, err
 		}
+
+		logLen++
 	}
 
 	return &Database[B, S]{
-		base:  base,
-		state: state,
-		logW:  logW,
+		base:   base,
+		state:  state,
+		logW:   logW,
+		logLen: logLen,
 	}, nil
 }
 
@@ -97,7 +114,13 @@ func (db *Database[B, S]) Apply(c tapedb.Change) error {
 		return err
 	}
 
+	db.logLen++
+
 	return nil
+}
+
+func (db *Database[B, S]) LogLen() int {
+	return db.logLen
 }
 
 func (db *Database[B, S]) writeChange(c tapedb.Change) (int64, error) {
@@ -118,7 +141,14 @@ func (db *Database[B, S]) writeChange(c tapedb.Change) (int64, error) {
 	return total, nil
 }
 
-func readChange[B tapedb.Base, S tapedb.State](f tapedb.Factory[B, S], line []byte) (tapedb.Change, error) {
+func readChange[
+	B tapedb.Base,
+	S tapedb.State,
+	F tapedb.Factory[B, S],
+](
+	f F,
+	line []byte,
+) (tapedb.Change, error) {
 	parts := bytes.SplitN(line, []byte(" "), 2)
 	if len(parts) != 2 {
 		return nil, ErrMalformedLog
