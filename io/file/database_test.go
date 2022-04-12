@@ -15,6 +15,7 @@
 package file_test
 
 import (
+	"bytes"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/simia-tech/tapedb/v2/io/crypto"
 	"github.com/simia-tech/tapedb/v2/io/file"
 	"github.com/simia-tech/tapedb/v2/test"
 )
@@ -48,6 +50,18 @@ func TestCreateDatabase(t *testing.T) {
 		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
 		require.Nil(t, db)
 		assert.ErrorIs(t, err, file.ErrDatabaseExists)
+	})
+
+	t.Run("Encrypted", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
+
+		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		require.NoError(t, err)
+		defer db.Close()
+
+		require.NoError(t,
+			db.Apply(&test.ChangeCounterInc{Value: 21}))
 	})
 }
 
@@ -163,73 +177,56 @@ attach-payload {"payloadID":"123"}
 		})
 	})
 
-	// 	t.Run("Encrypted", func(t *testing.T) {
-	// 		t.Run("Simple", func(t *testing.T) {
-	// 			path, removeDir := makeTempDir(t)
-	// 			defer removeDir()
+	t.Run("Encrypted", func(t *testing.T) {
+		file.NonceFn = crypto.FixedNonceFn(testNonce)
 
-	// 			makeFile(t, filepath.Join(path, tapedb.FileNameDatabase), `Nonce: 000000000000000000000000
+		t.Run("Simple", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
 
-	// MquNmSFxxZN8O7KIBFqwI1PZpA==
-	// .
-	// zEjhe4DN27dlYVY11+5X5I7kpNlCA7YIWPPHeshT5ameEEHYieQ
-	// `)
+			makeFile(t, filepath.Join(path, file.FileNameLog),
+				"RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg\n")
 
-	// 			db, err := model.OpenFileDatabase(path, tapedb.WithOpenKey(testKey))
-	// 			require.NoError(t, err)
-	// 			defer db.Close()
+			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testKey))
+			require.NoError(t, err)
+			defer db.Close()
 
-	// 			require.NoError(t, db.Apply(&testAddItemChange{Name: "one"}))
+			require.NoError(t, db.Apply(&test.ChangeCounterInc{Value: 123}))
 
-	// 			assert.Equal(t, 2, db.ChangesCount())
+			assert.Equal(t, 2, db.LogLen())
+			assert.Equal(t, `RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg
+AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOW/ALLba+QxD4jkcJYOo99rU7+DA
+`,
+				readFile(t, filepath.Join(path, file.FileNameLog)))
+		})
 
-	// 			assert.Equal(t, `Nonce: 000000000000000000000000
+		t.Run("WithPayload", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
 
-	// MquNmSFxxZN8O7KIBFqwI1PZpA==
-	// .
-	// zEjhe4DN27dlYVY11+5X5I7kpNlCA7YIWPPHeshT5ameEEHYieQ
-	// j7yTmhnzm3lc8fqz0HpPJF+Z0Oa2oz3GgNE555k4oxARXfrCRJg
-	// `,
-	// 				readFile(t, filepath.Join(path, tapedb.FileNameDatabase)))
-	// 		})
+			makeFile(t, filepath.Join(path, file.FileNameLog),
+				"RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg\n")
 
-	// 		t.Run("WithPayload", func(t *testing.T) {
-	// 			restore := fixedNonce(testNonce)
-	// 			defer restore()
+			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testKey))
+			require.NoError(t, err)
+			defer db.Close()
 
-	// 			path, removeDir := makeTempDir(t)
-	// 			defer removeDir()
+			require.NoError(t,
+				db.Apply(
+					&test.ChangeAttachPayload{PayloadID: "123"},
+					file.NewPayload("123", bytes.NewReader([]byte("test content")))))
 
-	// 			makeFile(t, filepath.Join(path, tapedb.FileNameDatabase), `Nonce: 000000000000000000000000
+			assert.Equal(t, 2, db.LogLen())
+			assert.Equal(t, `RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg
+AAAAAAAAAAAAAAAAKKLzMvrzi/yC8BYHAeWQ5pvdSldYBaNcGRkUZL6GzmUSHoM0+S5nqVoaLW8WgkdwqwI
+`,
+				readFile(t, filepath.Join(path, file.FileNameLog)))
 
-	// MquNmSFxxZN8O7KIBFqwI1PZpA==
-	// .
-	// zEjhe4DN27dlYVY11+5X5I7kpNlCA7YIWPPHeshT5ameEEHYieQ
-	// `)
-
-	// 			db, err := model.OpenFileDatabase(path, tapedb.WithOpenKey(testKey))
-	// 			require.NoError(t, err)
-	// 			defer db.Close()
-
-	// 			require.NoError(t,
-	// 				db.Apply(
-	// 					&testAttachPayloadChange{Name: "two", PayloadID: "123"},
-	// 					tapedb.NewPayload("123", bytes.NewReader([]byte("test content")))))
-
-	// 			assert.Equal(t, `Nonce: 000000000000000000000000
-
-	// MquNmSFxxZN8O7KIBFqwI1PZpA==
-	// .
-	// zEjhe4DN27dlYVY11+5X5I7kpNlCA7YIWPPHeshT5ameEEHYieQ
-	// j6yDsg7+pjhev/uz2T8WPBOX0+a25BvHcx8Z5imbUuxm2d2o3fc4s59H4szoSBzfjIA11TYr3bH7oYu5UII
-	// `,
-	// 				readFile(t, filepath.Join(path, tapedb.FileNameDatabase)))
-
-	// 			assert.Equal(t,
-	// 				"AAAAAAAAAAAAAAAAPbP0J7n4yeKX7BQccJUnGtQ3zU4KeoCIo2hUCg",
-	// 				readFileBase64(t, filepath.Join(path, tapedb.FilePrefixPayload+"123")))
-	// 		})
-	// 	})
+			assert.Equal(t,
+				"AAAAAAAAAAAAAAAAHAA9s/QnufjJ4pfsFBxwlSca1DfNTgp6gIijaFQK",
+				readFileBase64(t, filepath.Join(path, file.FilePrefixPayload+"123")))
+		})
+	})
 }
 
 // func TestFileDatabaseOpenPayload(t *testing.T) {

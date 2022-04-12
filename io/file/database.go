@@ -24,6 +24,11 @@ import (
 
 	"github.com/simia-tech/tapedb/v2"
 	tapeio "github.com/simia-tech/tapedb/v2/io"
+	"github.com/simia-tech/tapedb/v2/io/crypto"
+)
+
+const (
+	MetaFieldNonce = "Nonce"
 )
 
 var (
@@ -31,11 +36,15 @@ var (
 	ErrDatabaseExists  = errors.New("database exists")
 )
 
+var NonceFn crypto.NonceFunc = crypto.RandomNonceFn()
+
 type Database[B tapedb.Base, S tapedb.State] struct {
-	path     string
-	fileMode fs.FileMode
-	db       *tapeio.Database[B, S]
-	logC     io.Closer
+	path       string
+	fileMode   fs.FileMode
+	meta       Meta
+	key        []byte
+	db         *tapeio.Database[B, S]
+	logCloseFn func() error
 }
 
 func CreateDatabase[
@@ -52,6 +61,15 @@ func CreateDatabase[
 		opt(&options)
 	}
 
+	key := []byte(nil)
+	err := error(nil)
+	if options.keyFunc != nil {
+		key, err = options.keyFunc(Meta{})
+		if err != nil {
+			return nil, fmt.Errorf("derive key: %w", err)
+		}
+	}
+
 	if err := os.MkdirAll(path, options.directoryMode); err != nil {
 		return nil, fmt.Errorf("make directory: %w", err)
 	}
@@ -65,16 +83,35 @@ func CreateDatabase[
 		return nil, err
 	}
 
-	db, err := tapeio.NewDatabase[B, S, F](f, logF)
+	db := (*tapeio.Database[B, S])(nil)
+	logCloseFn := logF.Close
+	if len(key) == 0 {
+		db, err = tapeio.NewDatabase[B, S, F](f, logF)
+	} else {
+		logWC, err := crypto.NewLineWriter(logF, key, NonceFn)
+		if err != nil {
+			return nil, err
+		}
+
+		logCloseFn = func() error {
+			if err := logWC.Close(); err != nil {
+				return err
+			}
+			return logF.Close()
+		}
+
+		db, err = tapeio.NewDatabase[B, S, F](f, logWC)
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	return &Database[B, S]{
-		path:     path,
-		fileMode: options.fileMode,
-		db:       db,
-		logC:     logF,
+		path:       path,
+		fileMode:   options.fileMode,
+		meta:       Meta{},
+		db:         db,
+		logCloseFn: logCloseFn,
 	}, nil
 }
 
@@ -92,8 +129,29 @@ func OpenDatabase[
 		opt(&options)
 	}
 
+	meta := Meta{}
+	metaPath := filepath.Join(path, FileNameMeta)
+	metaF, err := os.OpenFile(metaPath, os.O_RDONLY, 0)
+	if err == nil {
+		m, err := ReadMeta(metaF)
+		if err != nil {
+			return nil, fmt.Errorf("read meta: %w", err)
+		}
+		meta = m
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("open meta %s: %w", metaPath, err)
+	}
+
+	key := []byte(nil)
+	if options.keyFunc != nil {
+		key, err = options.keyFunc(meta)
+		if err != nil {
+			return nil, fmt.Errorf("derive key: %w", err)
+		}
+	}
+
 	basePath := filepath.Join(path, FileNameBase)
-	baseF, err := os.OpenFile(basePath, os.O_RDWR|os.O_SYNC, 0)
+	baseF, err := os.OpenFile(basePath, os.O_RDONLY, 0)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("open base %s: %w", basePath, err)
 	}
@@ -108,16 +166,55 @@ func OpenDatabase[
 		fileMode = stat.Mode()
 	}
 
-	db, err := tapeio.OpenDatabase[B, S, F](f, baseF, logF, logF)
-	if err != nil {
-		return nil, err
+	db := (*tapeio.Database[B, S])(nil)
+	logCloseFn := logF.Close
+	if len(key) == 0 {
+		db, err = tapeio.OpenDatabase[B, S, F](f, baseF, logF, logF)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		baseR := io.Reader(nil)
+		if baseF != nil {
+			baseR, err = crypto.NewBlockReader(baseF, key)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		logR := io.Reader(nil)
+		if logF != nil {
+			logR, err = crypto.NewLineReader(logF, key)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		logWC, err := crypto.NewLineWriter(logF, key, NonceFn)
+		if err != nil {
+			return nil, err
+		}
+
+		logCloseFn = func() error {
+			if err := logWC.Close(); err != nil {
+				return err
+			}
+			return logF.Close()
+		}
+
+		db, err = tapeio.OpenDatabase[B, S, F](f, baseR, logR, logWC)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Database[B, S]{
-		path:     path,
-		fileMode: fileMode,
-		db:       db,
-		logC:     logF,
+		path:       path,
+		fileMode:   fileMode,
+		meta:       meta,
+		key:        key,
+		db:         db,
+		logCloseFn: logCloseFn,
 	}, nil
 }
 
@@ -130,10 +227,14 @@ func (db *Database[B, S]) State() S {
 }
 
 func (db *Database[B, S]) Close() error {
-	if err := db.logC.Close(); err != nil {
+	if err := db.logCloseFn(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (db *Database[B, S]) Meta() Meta {
+	return db.meta
 }
 
 func (db *Database[B, S]) LogLen() int {
@@ -150,26 +251,24 @@ func (db *Database[B, S]) Apply(change tapedb.Change, payloads ...Payload) error
 			return err
 		}
 
-		// if db.db.key == nil {
-		if _, err := io.Copy(f, payload.r); err != nil {
-			return err
+		if len(db.key) == 0 {
+			if _, err := io.Copy(f, payload.r); err != nil {
+				return err
+			}
+		} else {
+			wc, err := crypto.NewBlockWriter(f, db.key, NonceFn)
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(wc, payload.r); err != nil {
+				return err
+			}
+
+			if err := wc.Close(); err != nil {
+				return err
+			}
 		}
-		// } else {
-		// c, err := chunkio.NewAESCrypter(db.db.key, RandomNonce())
-		// if err != nil {
-		// 	return err
-		// }
-
-		// w := chunkio.NewAESStreamWriter(f, c)
-
-		// if _, err := io.Copy(w, payload.r); err != nil {
-		// 	return err
-		// }
-
-		// if err := w.Flush(); err != nil {
-		// 	return err
-		// }
-		// }
 
 		if err := f.Close(); err != nil {
 			return err

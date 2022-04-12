@@ -64,8 +64,10 @@ func OpenDatabase[
 ) (*Database[B, S], error) {
 	base := f.NewBase()
 
-	if _, err := base.ReadFrom(baseR); err != nil {
-		return nil, err
+	if baseR != nil {
+		if _, err := base.ReadFrom(baseR); err != nil {
+			return nil, fmt.Errorf("read base: %w", err)
+		}
 	}
 
 	state := f.NewState(base)
@@ -73,7 +75,7 @@ func OpenDatabase[
 	logLen := 0
 	scanner := bufio.NewScanner(logR)
 	for scanner.Scan() {
-		if len(scanner.Bytes()) == 0 {
+		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
 			continue
 		}
 

@@ -16,10 +16,10 @@ package file
 
 import "io/fs"
 
-type KeyFunc func(Header) ([]byte, error)
+type KeyFunc func(Meta) ([]byte, error)
 
 func StaticKeyFunc(value []byte) KeyFunc {
-	return func(_ Header) ([]byte, error) {
+	return func(_ Meta) ([]byte, error) {
 		return value, nil
 	}
 }
@@ -27,14 +27,14 @@ func StaticKeyFunc(value []byte) KeyFunc {
 type createOptions struct {
 	directoryMode fs.FileMode
 	fileMode      fs.FileMode
-	headerFunc    func() Header
+	metaFunc      func() Meta
 	keyFunc       KeyFunc
 }
 
 var defaultCreateOptions = createOptions{
 	directoryMode: 0755,
 	fileMode:      0644,
-	headerFunc:    func() Header { return Header{} },
+	metaFunc:      func() Meta { return Meta{} },
 }
 
 type CreateOption func(*createOptions)
@@ -51,9 +51,9 @@ func WithFileMode(value fs.FileMode) CreateOption {
 	}
 }
 
-func WithHeader(value Header) CreateOption {
+func WithMeta(value Meta) CreateOption {
 	return func(o *createOptions) {
-		o.headerFunc = func() Header { return value }
+		o.metaFunc = func() Meta { return value }
 	}
 }
 
@@ -123,7 +123,7 @@ func WithConsumeChanges(value int) SpliceOption {
 	}
 }
 
-func keyFor(fn KeyFunc, h Header) ([]byte, error) {
+func keyFor(fn KeyFunc, h Meta) ([]byte, error) {
 	if fn == nil {
 		return nil, nil
 	}

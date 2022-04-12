@@ -24,36 +24,36 @@ import (
 	"strconv"
 )
 
-type Header textproto.MIMEHeader
+type Meta textproto.MIMEHeader
 
-func ReadHeader(r io.Reader) (Header, io.Reader, error) {
+func ReadMeta(r io.Reader) (Meta, error) {
 	if r == nil {
-		return Header{}, nil, nil
+		return Meta{}, nil
 	}
 
 	tr := textproto.NewReader(bufio.NewReader(r))
 	mimeHeader, err := tr.ReadMIMEHeader()
 	if err != nil {
-		return Header{}, nil, err
+		return Meta{}, fmt.Errorf("read mime header: %w", err)
 	}
 
-	return Header(mimeHeader), tr.R, nil
+	return Meta(mimeHeader), nil
 }
 
-func (h Header) SetBytes(key string, value []byte) {
-	h.Set(key, hex.EncodeToString(value))
+func (m Meta) SetBytes(key string, value []byte) {
+	m.Set(key, hex.EncodeToString(value))
 }
 
-func (h Header) SetUInt64(key string, value uint64) {
-	h.Set(key, strconv.FormatUint(value, 10))
+func (m Meta) SetUInt64(key string, value uint64) {
+	m.Set(key, strconv.FormatUint(value, 10))
 }
 
-func (h Header) Set(key, value string) {
-	textproto.MIMEHeader(h).Set(key, value)
+func (m Meta) Set(key, value string) {
+	textproto.MIMEHeader(m).Set(key, value)
 }
 
-func (h Header) GetBytes(key string, defaultValue []byte) []byte {
-	if value := h.Get(key); value != "" {
+func (m Meta) GetBytes(key string, defaultValue []byte) []byte {
+	if value := m.Get(key); value != "" {
 		if v, err := hex.DecodeString(value); err == nil {
 			return v
 		}
@@ -61,8 +61,8 @@ func (h Header) GetBytes(key string, defaultValue []byte) []byte {
 	return defaultValue
 }
 
-func (h Header) GetUInt64(key string, defaultValue uint64) uint64 {
-	if value := h.Get(key); value != "" {
+func (m Meta) GetUInt64(key string, defaultValue uint64) uint64 {
+	if value := m.Get(key); value != "" {
 		if v, err := strconv.ParseUint(value, 10, 64); err == nil {
 			return v
 		}
@@ -70,26 +70,26 @@ func (h Header) GetUInt64(key string, defaultValue uint64) uint64 {
 	return defaultValue
 }
 
-func (h Header) Get(key string) string {
-	return textproto.MIMEHeader(h).Get(key)
+func (m Meta) Get(key string) string {
+	return textproto.MIMEHeader(m).Get(key)
 }
 
-func (h Header) Has(key string) bool {
-	_, ok := h[textproto.CanonicalMIMEHeaderKey(key)]
+func (m Meta) Has(key string) bool {
+	_, ok := m[textproto.CanonicalMIMEHeaderKey(key)]
 	return ok
 }
 
-func (h Header) WriteTo(w io.Writer) (int64, error) {
+func (m Meta) WriteTo(w io.Writer) (int64, error) {
 	total := int64(0)
 
 	keys := []string{}
-	for key := range h {
+	for key := range m {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
 	for _, key := range keys {
-		for _, value := range h[key] {
+		for _, value := range m[key] {
 			n, err := fmt.Fprintf(w, "%s: %s\n", key, value)
 			if err != nil {
 				return total, err
