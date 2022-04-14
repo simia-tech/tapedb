@@ -306,28 +306,6 @@ func (db *Database[B, S]) payloadPath(id string) string {
 	return filepath.Join(db.path, FilePrefixPayload+id)
 }
 
-// func (m *Model) ReadFileDatabaseHeader(path string) (Header, error) {
-// 	databasePath := filepath.Join(path, FileNameDatabase)
-// 	databaseF, err := os.OpenFile(databasePath, os.O_RDWR, 0)
-// 	if err != nil {
-// 		if os.IsNotExist(err) {
-// 			return nil, fmt.Errorf("open %s: %w", databasePath, ErrDatabaseMissing)
-// 		}
-// 		return nil, err
-// 	}
-
-// 	header, _, err := ReadHeader(databaseF)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if err := databaseF.Close(); err != nil {
-// 		return nil, err
-// 	}
-
-// 	return header, nil
-// }
-
 func SpliceDatabase[
 	B tapedb.Base,
 	S tapedb.State,
@@ -336,6 +314,22 @@ func SpliceDatabase[
 	options := defaultSpliceOptions
 	for _, opt := range opts {
 		opt(&options)
+	}
+
+	meta := Meta{}
+	// metaFileMode := fs.FileMode(0644)
+	metaPath := filepath.Join(path, FileNameMeta)
+	if f, err := os.OpenFile(metaPath, os.O_RDONLY, 0); err == nil {
+		// if stat, err := f.Stat(); err == nil {
+		// 	metaFileMode = stat.Mode()
+		// }
+		m, err := ReadMeta(f)
+		if err != nil {
+			return fmt.Errorf("read meta: %w", err)
+		}
+		meta = m
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
 	}
 
 	baseFileMode := fs.FileMode(0644)
@@ -370,6 +364,7 @@ func SpliceDatabase[
 		}
 		return err
 	}
+	newBaseWC := io.WriteCloser(newBaseF)
 
 	newLogPath := filepath.Join(path, FileNameNewLog)
 	newLogF, err := os.OpenFile(newLogPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC, logFileMode)
@@ -378,6 +373,26 @@ func SpliceDatabase[
 			return fmt.Errorf("create log %s: %w", newLogPath, ErrAlreadyExists)
 		}
 		return err
+	}
+	newLogWC := io.WriteCloser(newLogF)
+
+	if options.targetKeyFunc != nil {
+		targetKey, err := options.targetKeyFunc(meta)
+		if err != nil {
+			return fmt.Errorf("derive target key: %w", err)
+		}
+
+		bw, err := crypto.NewBlockWriter(newBaseWC, targetKey, NonceFn)
+		if err != nil {
+			return fmt.Errorf("new block writer: %w", err)
+		}
+		newBaseWC = bw
+
+		lw, err := crypto.NewLineWriter(newLogWC, targetKey, NonceFn)
+		if err != nil {
+			return fmt.Errorf("new line writer: %w", err)
+		}
+		newLogWC = lw
 	}
 
 	payloadIDs := []string{}
@@ -388,7 +403,7 @@ func SpliceDatabase[
 		return nil
 	}
 
-	if err := tapeio.SpliceDatabase[B, S, F](f, newBaseF, newLogF, baseRC, logRC, options.rebaseLogEntries, baseOrChangeWrittenFn); err != nil {
+	if err := tapeio.SpliceDatabase[B, S, F](f, newBaseWC, newLogWC, baseRC, logRC, options.rebaseLogEntries, baseOrChangeWrittenFn); err != nil {
 		return err
 	}
 
@@ -397,18 +412,20 @@ func SpliceDatabase[
 			return err
 		}
 	}
-	if err := newBaseF.Close(); err != nil {
+	if err := newBaseWC.Close(); err != nil {
 		return err
 	}
+	newBaseF.Close() // ignore the error since the file might be already closed
 
 	if logRC != nil {
 		if err := logRC.Close(); err != nil {
 			return err
 		}
 	}
-	if err := newLogF.Close(); err != nil {
+	if err := newLogWC.Close(); err != nil {
 		return err
 	}
+	newLogF.Close() // ignore the error since the file might be already closed
 
 	if err := deleteUnreferencedPayloads(path, payloadIDs); err != nil {
 		return err

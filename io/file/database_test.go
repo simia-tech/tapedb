@@ -336,4 +336,33 @@ counter-inc {"value":2}
 			assert.Equal(t, "counter-inc {\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
 		})
 	})
+
+	t.Run("FromPlainToEncrypted", func(t *testing.T) {
+		file.NonceFn = crypto.FixedNonceFn(testNonce)
+
+		t.Run("NoFile", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
+
+			require.NoError(t,
+				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithTargetKey(testKey)))
+
+			assert.Equal(t, "AAAAAAAAAAAAAAAAHAAy9PEy9e7Drtm5B2Ih+wBioy9nEqoVlbSJnZT3", readFileBase64(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t, "", readFile(t, filepath.Join(path, file.FileNameLog)))
+		})
+
+		t.Run("WithBaseAndLog", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
+
+			makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":21}`)
+			makeFile(t, filepath.Join(path, file.FileNameLog), `counter-inc {"value":2}`)
+
+			require.NoError(t,
+				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithTargetKey(testKey)))
+
+			assert.Equal(t, "AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ", readFileBase64(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t, "AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOWL8QRCFTMvPMceWUFI6Ztdce\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+		})
+	})
 }
