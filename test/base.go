@@ -38,5 +38,9 @@ func (b *Base) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (b *Base) Apply(c tapedb.Change) error {
+	switch t := c.(type) {
+	case *ChangeCounterInc:
+		b.Value += t.Value
+	}
 	return nil
 }

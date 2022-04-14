@@ -75,11 +75,12 @@ func OpenDatabase[
 	logLen := 0
 	scanner := bufio.NewScanner(logR)
 	for scanner.Scan() {
-		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
 			continue
 		}
 
-		change, err := readChange[B, S, F](f, scanner.Bytes())
+		change, err := readChange[B, S, F](f, line)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +113,7 @@ func (db *Database[B, S]) Apply(c tapedb.Change) error {
 		return err
 	}
 
-	if _, err := db.writeChange(c); err != nil {
+	if _, err := writeChange(db.logW, c); err != nil {
 		return err
 	}
 
@@ -125,16 +126,16 @@ func (db *Database[B, S]) LogLen() int {
 	return db.logLen
 }
 
-func (db *Database[B, S]) writeChange(c tapedb.Change) (int64, error) {
+func writeChange[W io.Writer](w W, c tapedb.Change) (int64, error) {
 	total := int64(0)
 
-	n, err := fmt.Fprint(db.logW, c.TypeName(), " ")
+	n, err := fmt.Fprint(w, c.TypeName(), " ")
 	if err != nil {
 		return total, err
 	}
 	total += int64(n)
 
-	n64, err := c.WriteTo(db.logW)
+	n64, err := c.WriteTo(w)
 	if err != nil {
 		return total, err
 	}
@@ -166,4 +167,77 @@ func readChange[
 	}
 
 	return change, nil
+}
+
+func SpliceDatabase[
+	B tapedb.Base,
+	S tapedb.State,
+	F tapedb.Factory[B, S],
+](
+	f F,
+	baseW, logW io.Writer,
+	baseR, logR io.Reader,
+	rebaseLogEntries int,
+	baseOrChangeWrittenFn func(any) error,
+) error {
+	base := f.NewBase()
+	if baseR != nil {
+		if _, err := base.ReadFrom(baseR); err != nil {
+			return fmt.Errorf("read base: %w", err)
+		}
+	}
+
+	logIndex := 0
+	baseWritten := false
+
+	if logR != nil {
+		scanner := bufio.NewScanner(logR)
+		for scanner.Scan() {
+			line := bytes.TrimSpace(scanner.Bytes())
+			if len(line) == 0 {
+				continue
+			}
+
+			change, err := readChange[B, S, F](f, line)
+			if err != nil {
+				return err
+			}
+
+			switch {
+			case logIndex < rebaseLogEntries:
+				if err := base.Apply(change); err != nil {
+					return fmt.Errorf("apply change to base: %w", err)
+				}
+			case !baseWritten:
+				if _, err := base.WriteTo(baseW); err != nil {
+					return fmt.Errorf("write base: %w", err)
+				}
+				if err := baseOrChangeWrittenFn(base); err != nil {
+					return err
+				}
+				baseWritten = true
+
+				fallthrough
+			default:
+				if _, err := writeChange(logW, change); err != nil {
+					return fmt.Errorf("write change: %w", err)
+				}
+				if err := baseOrChangeWrittenFn(change); err != nil {
+					return err
+				}
+			}
+			logIndex++
+		}
+	}
+
+	if !baseWritten {
+		if _, err := base.WriteTo(baseW); err != nil {
+			return fmt.Errorf("write base: %w", err)
+		}
+		if err := baseOrChangeWrittenFn(base); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

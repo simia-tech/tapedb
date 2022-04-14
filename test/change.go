@@ -36,3 +36,10 @@ func (c *ChangeAttachPayload) ReadFrom(r io.Reader) (int64, error) {
 func (c *ChangeAttachPayload) WriteTo(w io.Writer) (int64, error) {
 	return 0, json.NewEncoder(w).Encode(c)
 }
+
+func (c *ChangeAttachPayload) PayloadIDs() []string {
+	if c.PayloadID == "" {
+		return []string{}
+	}
+	return []string{c.PayloadID}
+}

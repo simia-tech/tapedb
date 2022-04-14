@@ -38,6 +38,8 @@ func (f *Factory) NewChange(typeName string) (tapedb.Change, error) {
 	switch typeName {
 	case "counter-inc":
 		return &ChangeCounterInc{}, nil
+	case "attach-payload":
+		return &ChangeAttachPayload{}, nil
 	}
 	return nil, fmt.Errorf("change type [%s]: %w", typeName, tapedb.ErrUnknownChangeType)
 }

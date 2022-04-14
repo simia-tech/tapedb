@@ -21,6 +21,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/simia-tech/tapedb/v2"
 	tapeio "github.com/simia-tech/tapedb/v2/io"
@@ -32,8 +33,8 @@ const (
 )
 
 var (
-	ErrDatabaseMissing = errors.New("database missing")
-	ErrDatabaseExists  = errors.New("database exists")
+	ErrMissing       = errors.New("missing")
+	ErrAlreadyExists = errors.New("already exists")
 )
 
 var NonceFn crypto.NonceFunc = crypto.RandomNonceFn()
@@ -77,7 +78,7 @@ func CreateDatabase[
 	logPath := filepath.Join(path, FileNameLog)
 	logF, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_SYNC, options.fileMode)
 	if os.IsExist(err) {
-		return nil, fmt.Errorf("create log %s: %w", logPath, ErrDatabaseExists)
+		return nil, fmt.Errorf("create log %s: %w", logPath, ErrAlreadyExists)
 	}
 	if err != nil {
 		return nil, err
@@ -327,85 +328,132 @@ func (db *Database[B, S]) payloadPath(id string) string {
 // 	return header, nil
 // }
 
-// func (m *Model) SpliceFileDatabase(path string, opts ...SpliceOption) error {
-// 	options := defaultSpliceOptions
-// 	for _, opt := range opts {
-// 		opt(&options)
-// 	}
+func SpliceDatabase[
+	B tapedb.Base,
+	S tapedb.State,
+	F tapedb.Factory[B, S],
+](f F, path string, opts ...SpliceOption) error {
+	options := defaultSpliceOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
 
-// 	fileMode := fs.FileMode(0644)
-// 	databaseRC := io.ReadCloser(nil)
-// 	databasePath := filepath.Join(path, FileNameDatabase)
-// 	if f, err := os.OpenFile(databasePath, os.O_RDONLY, 0); err == nil {
-// 		databaseRC = f
-// 		if stat, err := f.Stat(); err == nil {
-// 			fileMode = stat.Mode()
-// 		}
-// 	} else if err != nil && !os.IsNotExist(err) {
-// 		return err
-// 	}
+	baseFileMode := fs.FileMode(0644)
+	baseRC := io.ReadCloser(nil)
+	basePath := filepath.Join(path, FileNameBase)
+	if f, err := os.OpenFile(basePath, os.O_RDONLY, 0); err == nil {
+		baseRC = f
+		if stat, err := f.Stat(); err == nil {
+			baseFileMode = stat.Mode()
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
 
-// 	newDatabasePath := filepath.Join(path, FileNameNewDatabase)
-// 	newDatabase, err := os.OpenFile(newDatabasePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC, fileMode)
-// 	if err != nil {
-// 		if os.IsExist(err) {
-// 			return fmt.Errorf("create %s: %w", newDatabasePath, ErrDatabaseExists)
-// 		}
-// 		return err
-// 	}
+	logFileMode := fs.FileMode(0644)
+	logRC := io.ReadCloser(nil)
+	logPath := filepath.Join(path, FileNameLog)
+	if f, err := os.OpenFile(logPath, os.O_RDONLY, 0); err == nil {
+		logRC = f
+		if stat, err := f.Stat(); err == nil {
+			logFileMode = stat.Mode()
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
 
-// 	payloadIDs, err := m.SpliceDatabase(newDatabase, databaseRC, opts...)
-// 	if err != nil {
-// 		return err
-// 	}
+	newBasePath := filepath.Join(path, FileNameNewBase)
+	newBaseF, err := os.OpenFile(newBasePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC, baseFileMode)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("create base %s: %w", newBasePath, ErrAlreadyExists)
+		}
+		return err
+	}
 
-// 	if databaseRC != nil {
-// 		if err := databaseRC.Close(); err != nil {
-// 			return err
-// 		}
-// 	}
-// 	if err := newDatabase.Close(); err != nil {
-// 		return err
-// 	}
+	newLogPath := filepath.Join(path, FileNameNewLog)
+	newLogF, err := os.OpenFile(newLogPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC, logFileMode)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("create log %s: %w", newLogPath, ErrAlreadyExists)
+		}
+		return err
+	}
 
-// 	if err := m.deleteUnreferencedPayloads(path, payloadIDs); err != nil {
-// 		return err
-// 	}
+	payloadIDs := []string{}
+	baseOrChangeWrittenFn := func(boc any) error {
+		if c, ok := boc.(PayloadContainer); ok {
+			payloadIDs = append(payloadIDs, c.PayloadIDs()...)
+		}
+		return nil
+	}
 
-// 	if err := os.Remove(databasePath); err != nil && !os.IsNotExist(err) {
-// 		return err
-// 	}
+	if err := tapeio.SpliceDatabase[B, S, F](f, newBaseF, newLogF, baseRC, logRC, options.rebaseLogEntries, baseOrChangeWrittenFn); err != nil {
+		return err
+	}
 
-// 	if err := os.Rename(newDatabasePath, databasePath); err != nil {
-// 		return err
-// 	}
+	if baseRC != nil {
+		if err := baseRC.Close(); err != nil {
+			return err
+		}
+	}
+	if err := newBaseF.Close(); err != nil {
+		return err
+	}
 
-// 	return nil
-// }
+	if logRC != nil {
+		if err := logRC.Close(); err != nil {
+			return err
+		}
+	}
+	if err := newLogF.Close(); err != nil {
+		return err
+	}
 
-// func (m *Model) deleteUnreferencedPayloads(path string, ids []string) error {
-// 	entries, err := os.ReadDir(path)
-// 	if err != nil {
-// 		return fmt.Errorf("read directory: %w", err)
-// 	}
+	if err := deleteUnreferencedPayloads(path, payloadIDs); err != nil {
+		return err
+	}
 
-// 	for _, entry := range entries {
-// 		if entry.IsDir() {
-// 			continue
-// 		}
+	if err := os.Remove(basePath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(newBasePath, basePath); err != nil {
+		return err
+	}
 
-// 		if name := entry.Name(); strings.HasPrefix(name, FilePrefixPayload) {
-// 			id := strings.TrimPrefix(name, FilePrefixPayload)
-// 			if !stringsContain(ids, id) {
-// 				if err := os.Remove(filepath.Join(path, entry.Name())); err != nil {
-// 					return err
-// 				}
-// 			}
-// 		}
-// 	}
+	if err := os.Remove(logPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(newLogPath, logPath); err != nil {
+		return err
+	}
 
-// 	return nil
-// }
+	return nil
+}
+
+func deleteUnreferencedPayloads(path string, ids []string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("read directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		if name := entry.Name(); strings.HasPrefix(name, FilePrefixPayload) {
+			id := strings.TrimPrefix(name, FilePrefixPayload)
+			if !stringsContain(ids, id) {
+				if err := os.Remove(filepath.Join(path, entry.Name())); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
 
 // func (db *FileDatabase) Close() error {
 // 	if err := db.changesC.Close(); err != nil {
@@ -433,11 +481,11 @@ func (db *Database[B, S]) payloadPath(id string) string {
 // 	return ids
 // }
 
-// func stringsContain(values []string, value string) bool {
-// 	for _, v := range values {
-// 		if v == value {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
+func stringsContain(values []string, value string) bool {
+	for _, v := range values {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}

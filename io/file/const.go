@@ -15,9 +15,12 @@
 package file
 
 const (
-	FileNameMeta = "meta"
-	FileNameBase = "base"
-	FileNameLog  = "log"
+	FileNameMeta    = "meta"
+	FileNameBase    = "base"
+	FileNameLog     = "log"
+	FileNameNewMeta = "meta.new"
+	FileNameNewBase = "base.new"
+	FileNameNewLog  = "log.new"
 
 	FilePrefixPayload = "payload-"
 )

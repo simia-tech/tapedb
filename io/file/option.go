@@ -86,13 +86,13 @@ func WithOpenKeyFunc(value KeyFunc) OpenOption {
 }
 
 type spliceOptions struct {
-	sourceKeyFunc  KeyFunc
-	targetKeyFunc  KeyFunc
-	consumeChanges int
+	sourceKeyFunc    KeyFunc
+	targetKeyFunc    KeyFunc
+	rebaseLogEntries int
 }
 
 var defaultSpliceOptions = spliceOptions{
-	consumeChanges: 0,
+	rebaseLogEntries: 0,
 }
 
 type SpliceOption func(*spliceOptions)
@@ -117,15 +117,8 @@ func WithTargetKeyFunc(value KeyFunc) SpliceOption {
 	}
 }
 
-func WithConsumeChanges(value int) SpliceOption {
+func WithRebaseLogEntries(value int) SpliceOption {
 	return func(o *spliceOptions) {
-		o.consumeChanges = value
+		o.rebaseLogEntries = value
 	}
-}
-
-func keyFor(fn KeyFunc, h Meta) ([]byte, error) {
-	if fn == nil {
-		return nil, nil
-	}
-	return fn(h)
 }

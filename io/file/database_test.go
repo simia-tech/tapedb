@@ -50,7 +50,7 @@ func TestCreateDatabase(t *testing.T) {
 
 		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
 		require.Nil(t, db)
-		assert.ErrorIs(t, err, file.ErrDatabaseExists)
+		assert.ErrorIs(t, err, file.ErrAlreadyExists)
 	})
 
 	t.Run("Encrypted", func(t *testing.T) {
@@ -171,9 +171,7 @@ attach-payload {"payloadID":"123"}
 					file.NewPayload("123", strings.NewReader("test content 2"))),
 				file.ErrPayloadIDAlreadyExists)
 
-			assert.Equal(t, `attach-payload {"payloadID":"123"}
-`,
-				readFile(t, filepath.Join(path, file.FileNameLog)))
+			assert.Equal(t, "attach-payload {\"payloadID\":\"123\"}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
 			assert.Equal(t, "test content", readFile(t, filepath.Join(path, file.FilePrefixPayload+"123")))
 		})
 	})
@@ -278,79 +276,64 @@ func TestDatabaseOpenPayload(t *testing.T) {
 	})
 }
 
-// func TestFileDatabaseSplice(t *testing.T) {
-// 	t.Run("FromPlainToPlain", func(t *testing.T) {
-// 		t.Run("NoFile", func(t *testing.T) {
-// 			path, removeDir := makeTempDir(t)
-// 			defer removeDir()
+func TestDatabaseSplice(t *testing.T) {
+	t.Run("FromPlainToPlain", func(t *testing.T) {
+		t.Run("NoFile", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
 
-// 			require.NoError(t,
-// 				model.SpliceFileDatabase(path))
+			require.NoError(t,
+				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path))
 
-// 			assert.Equal(t, `
-// {}
-// `,
-// 				readFile(t, filepath.Join(path, tapedb.FileNameDatabase)))
-// 		})
+			assert.Equal(t, "{\"value\":0}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t, "", readFile(t, filepath.Join(path, file.FileNameLog)))
+		})
 
-// 		t.Run("WithBaseAndChanges", func(t *testing.T) {
-// 			path, removeDir := makeTempDir(t)
-// 			defer removeDir()
+		t.Run("WithBaseAndLog", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
 
-// 			makeFile(t, filepath.Join(path, tapedb.FileNameDatabase), `
-// {"items":["one","two","three"]}
-// addItem {"name":"four"}
-// removeItem {"name":"two"}
-// `)
+			makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":21}`)
+			makeFile(t, filepath.Join(path, file.FileNameLog), `counter-inc {"value":2}`)
 
-// 			require.NoError(t,
-// 				model.SpliceFileDatabase(path))
+			require.NoError(t,
+				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path))
 
-// 			assert.Equal(t, `
-// {"items":["one","two","three"]}
-// addItem {"name":"four"}
-// removeItem {"name":"two"}
-// `,
-// 				readFile(t, filepath.Join(path, tapedb.FileNameDatabase)))
-// 		})
+			assert.Equal(t, "{\"value\":21}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t, "counter-inc {\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+		})
 
-// 		t.Run("WithPayloads", func(t *testing.T) {
-// 			path, removeDir := makeTempDir(t)
-// 			defer removeDir()
+		t.Run("WithPayloads", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
 
-// 			makeFile(t, filepath.Join(path, tapedb.FileNameDatabase), `
-// {"items":["one","two"],"payloads":{"123":"one"}}
-// detachPayload {"name":"one","payloadID":"123"}
-// attachPayload {"name":"two","payloadID":"456"}
-// `)
-// 			makeFile(t, filepath.Join(path, tapedb.FilePrefixPayload+"123"), "test content")
-// 			makeFile(t, filepath.Join(path, tapedb.FilePrefixPayload+"456"), "test content")
+			makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":21}`)
+			makeFile(t, filepath.Join(path, file.FileNameLog), `attach-payload {"payloadID":"456"}`)
+			makeFile(t, filepath.Join(path, file.FilePrefixPayload+"123"), "test content")
+			makeFile(t, filepath.Join(path, file.FilePrefixPayload+"456"), "test content")
 
-// 			require.NoError(t,
-// 				model.SpliceFileDatabase(path, tapedb.WithConsumeChanges(1)))
+			require.NoError(t,
+				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path))
 
-// 			assert.False(t, existFile(t, filepath.Join(path, tapedb.FilePrefixPayload+"123")))
-// 			assert.True(t, existFile(t, filepath.Join(path, tapedb.FilePrefixPayload+"456")))
-// 		})
+			assert.NoFileExists(t, filepath.Join(path, file.FilePrefixPayload+"123"))
+			assert.FileExists(t, filepath.Join(path, file.FilePrefixPayload+"456"))
+		})
 
-// 		t.Run("WithChangeConsumed", func(t *testing.T) {
-// 			path, removeDir := makeTempDir(t)
-// 			defer removeDir()
+		t.Run("WithRebaseLogEntries", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
 
-// 			makeFile(t, filepath.Join(path, tapedb.FileNameDatabase), `
-// {"items":["one","two","three"]}
-// addItem {"name":"four"}
-// removeItem {"name":"two"}
-// `)
+			makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":21}`)
+			makeFile(t, filepath.Join(path, file.FileNameLog), `
+counter-inc {"value":7}
+counter-inc {"value":2}
+`)
 
-// 			require.NoError(t,
-// 				model.SpliceFileDatabase(path, tapedb.WithConsumeChanges(1)))
+			require.NoError(t,
+				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithRebaseLogEntries(1)))
 
-// 			assert.Equal(t, `
-// {"items":["one","two","three","four"]}
-// removeItem {"name":"two"}
-// `,
-// 				readFile(t, filepath.Join(path, tapedb.FileNameDatabase)))
-// 		})
-// 	})
-// }
+			assert.Equal(t, "{\"value\":28}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t, "counter-inc {\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+		})
+	})
+}
