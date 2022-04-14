@@ -16,6 +16,7 @@ package file_test
 
 import (
 	"bytes"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -99,7 +100,7 @@ counter-inc {"value":2}
 	})
 }
 
-func TestFileDatabaseApply(t *testing.T) {
+func TestDatabaseApply(t *testing.T) {
 	t.Run("Plain", func(t *testing.T) {
 		t.Run("Simple", func(t *testing.T) {
 			path, removeDir := makeTempDir(t)
@@ -229,53 +230,53 @@ AAAAAAAAAAAAAAAAKKLzMvrzi/yC8BYHAeWQ5pvdSldYBaNcGRkUZL6GzmUSHoM0+S5nqVoaLW8Wgkdw
 	})
 }
 
-// func TestFileDatabaseOpenPayload(t *testing.T) {
-// 	t.Run("Plain", func(t *testing.T) {
-// 		path, removeDir := makeTempDir(t)
-// 		defer removeDir()
+func TestDatabaseOpenPayload(t *testing.T) {
+	t.Run("Plain", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
 
-// 		db, err := model.CreateFileDatabase(path)
-// 		require.NoError(t, err)
-// 		defer db.Close()
+		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		require.NoError(t, err)
+		defer db.Close()
 
-// 		require.NoError(t,
-// 			db.Apply(
-// 				&testAttachPayloadChange{Name: "one", PayloadID: "123"},
-// 				tapedb.NewPayload("123", bytes.NewReader([]byte("test content")))))
+		require.NoError(t,
+			db.Apply(
+				&test.ChangeAttachPayload{PayloadID: "123"},
+				file.NewPayload("123", strings.NewReader("test content"))))
 
-// 		file, err := db.OpenPayload("123")
-// 		require.NoError(t, err)
+		f, err := db.OpenPayload("123")
+		require.NoError(t, err)
 
-// 		content, err := io.ReadAll(file)
-// 		require.NoError(t, err)
-// 		assert.Equal(t, "test content", string(content))
+		content, err := io.ReadAll(f)
+		require.NoError(t, err)
+		assert.Equal(t, "test content", string(content))
 
-// 		require.NoError(t, file.Close())
-// 	})
+		require.NoError(t, f.Close())
+	})
 
-// 	t.Run("Encrypted", func(t *testing.T) {
-// 		path, removeDir := makeTempDir(t)
-// 		defer removeDir()
+	t.Run("Encrypted", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
 
-// 		db, err := model.CreateFileDatabase(path, tapedb.WithCreateKey(testKey))
-// 		require.NoError(t, err)
-// 		defer db.Close()
+		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		require.NoError(t, err)
+		defer db.Close()
 
-// 		require.NoError(t,
-// 			db.Apply(
-// 				&testAttachPayloadChange{Name: "one", PayloadID: "123"},
-// 				tapedb.NewPayload("123", bytes.NewReader([]byte("test content")))))
+		require.NoError(t,
+			db.Apply(
+				&test.ChangeAttachPayload{PayloadID: "123"},
+				file.NewPayload("123", strings.NewReader("test content"))))
 
-// 		file, err := db.OpenPayload("123")
-// 		require.NoError(t, err)
+		f, err := db.OpenPayload("123")
+		require.NoError(t, err)
 
-// 		content, err := io.ReadAll(file)
-// 		require.NoError(t, err)
-// 		assert.Equal(t, "test content", string(content))
+		content, err := io.ReadAll(f)
+		require.NoError(t, err)
+		assert.Equal(t, "test content", string(content))
 
-// 		require.NoError(t, file.Close())
-// 	})
-// }
+		require.NoError(t, f.Close())
+	})
+}
 
 // func TestFileDatabaseSplice(t *testing.T) {
 // 	t.Run("FromPlainToPlain", func(t *testing.T) {

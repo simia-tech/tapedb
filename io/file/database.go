@@ -278,6 +278,29 @@ func (db *Database[B, S]) Apply(change tapedb.Change, payloads ...Payload) error
 	return db.db.Apply(change)
 }
 
+func (db *Database[B, S]) OpenPayload(id string) (io.ReadCloser, error) {
+	path := db.payloadPath(id)
+
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrPayloadMissing
+		}
+		return nil, err
+	}
+
+	if len(db.key) == 0 {
+		return f, nil
+	}
+
+	r, err := crypto.NewBlockReader(f, db.key)
+	if err != nil {
+		return nil, err
+	}
+
+	return tapeio.NewReadCloser(r, f.Close), nil
+}
+
 func (db *Database[B, S]) payloadPath(id string) string {
 	return filepath.Join(db.path, FilePrefixPayload+id)
 }
@@ -401,31 +424,6 @@ func (db *Database[B, S]) payloadPath(id string) string {
 
 // func (db *FileDatabase) ChangesCount() int {
 // 	return db.db.ChangesCount()
-// }
-
-// func (db *FileDatabase) OpenPayload(id string) (io.ReadCloser, error) {
-// 	path := db.payloadPath(id)
-
-// 	f, err := os.Open(path)
-// 	if err != nil {
-// 		if os.IsNotExist(err) {
-// 			return nil, ErrPayloadMissing
-// 		}
-// 		return nil, err
-// 	}
-
-// 	if db.db.key == nil {
-// 		return f, nil
-// 	}
-
-// 	c, err := chunkio.NewAESCrypter(db.db.key, []byte{})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	rc := chunkio.NewAESStreamReadCloser(f, c)
-
-// 	return rc, nil
 // }
 
 // func appendPayloadIDs(ids []string, container interface{}) []string {
