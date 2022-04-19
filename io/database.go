@@ -73,23 +73,25 @@ func OpenDatabase[
 	state := f.NewState(base)
 
 	logLen := 0
-	scanner := bufio.NewScanner(logR)
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
-		}
+	if logR != nil {
+		scanner := bufio.NewScanner(logR)
+		for scanner.Scan() {
+			line := bytes.TrimSpace(scanner.Bytes())
+			if len(line) == 0 {
+				continue
+			}
 
-		change, err := readChange[B, S, F](f, line)
-		if err != nil {
-			return nil, err
-		}
+			change, err := readChange[B, S, F](f, line)
+			if err != nil {
+				return nil, err
+			}
 
-		if err := state.Apply(change); err != nil {
-			return nil, err
-		}
+			if err := state.Apply(change); err != nil {
+				return nil, err
+			}
 
-		logLen++
+			logLen++
+		}
 	}
 
 	return &Database[B, S]{

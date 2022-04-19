@@ -143,58 +143,64 @@ func OpenDatabase[
 		return nil, fmt.Errorf("open meta %s: %w", metaPath, err)
 	}
 
+	basePath := filepath.Join(path, FileNameBase)
+	baseF, _, err := mayOpenReadOnlyFile(basePath)
+	if err != nil {
+		return nil, fmt.Errorf("open base %s: %w", basePath, err)
+	}
+	baseR := io.Reader(nil)
+	if baseF != nil {
+		baseR = baseF
+	}
+
+	logPath := filepath.Join(path, FileNameLog)
+	logF, err := os.OpenFile(logPath, os.O_RDWR|os.O_SYNC, 0644)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("open log %s: %w", logPath, err)
+	}
+	if baseF == nil && logF == nil {
+		return nil, ErrMissing
+	}
+	fileMode := fs.FileMode(0644)
+	if stat, err := logF.Stat(); err == nil {
+		fileMode = stat.Mode()
+	}
+	logCloseFn := logF.Close
+	logR := io.Reader(nil)
+	logWC := io.WriteCloser(nil)
+	if logF != nil {
+		logR = logF
+		logWC = logF
+	}
+
 	key := []byte(nil)
 	if options.keyFunc != nil {
 		key, err = options.keyFunc(meta)
 		if err != nil {
 			return nil, fmt.Errorf("derive key: %w", err)
 		}
-	}
 
-	basePath := filepath.Join(path, FileNameBase)
-	baseF, err := os.OpenFile(basePath, os.O_RDONLY, 0)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("open base %s: %w", basePath, err)
-	}
-
-	logPath := filepath.Join(path, FileNameLog)
-	logF, err := os.OpenFile(logPath, os.O_RDWR|os.O_SYNC, 0)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("open log %s: %w", logPath, err)
-	}
-	fileMode := fs.FileMode(0644)
-	if stat, err := logF.Stat(); err == nil {
-		fileMode = stat.Mode()
-	}
-
-	db := (*tapeio.Database[B, S])(nil)
-	logCloseFn := logF.Close
-	if len(key) == 0 {
-		db, err = tapeio.OpenDatabase[B, S, F](f, baseF, logF, logF)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		baseR := io.Reader(nil)
-		if baseF != nil {
-			baseR, err = crypto.NewBlockReader(baseF, key)
+		if baseR != nil {
+			br, err := crypto.NewBlockReader(baseR, key)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("new block reader: %w", err)
 			}
+			baseR = br
 		}
 
-		logR := io.Reader(nil)
-		if logF != nil {
-			logR, err = crypto.NewLineReader(logF, key)
+		if logR != nil {
+			lr, err := crypto.NewLineReader(logR, key)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("new line reader: %w", err)
 			}
+			logR = lr
 		}
 
-		logWC, err := crypto.NewLineWriter(logF, key, NonceFn)
+		lw, err := crypto.NewLineWriter(logWC, key, NonceFn)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("new line writer: %w", err)
 		}
+		logWC = lw
 
 		logCloseFn = func() error {
 			if err := logWC.Close(); err != nil {
@@ -202,11 +208,11 @@ func OpenDatabase[
 			}
 			return logF.Close()
 		}
+	}
 
-		db, err = tapeio.OpenDatabase[B, S, F](f, baseR, logR, logWC)
-		if err != nil {
-			return nil, err
-		}
+	db, err := tapeio.OpenDatabase[B, S, F](f, baseR, logR, logWC)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Database[B, S]{
@@ -259,7 +265,7 @@ func (db *Database[B, S]) Apply(change tapedb.Change, payloads ...Payload) error
 		} else {
 			wc, err := crypto.NewBlockWriter(f, db.key, NonceFn)
 			if err != nil {
-				return err
+				return fmt.Errorf("new block writer: %w", err)
 			}
 
 			if _, err := io.Copy(wc, payload.r); err != nil {

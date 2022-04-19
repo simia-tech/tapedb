@@ -67,6 +67,15 @@ func TestCreateDatabase(t *testing.T) {
 }
 
 func TestOpenDatabase(t *testing.T) {
+	t.Run("NoFile", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
+
+		db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		require.Nil(t, db)
+		assert.ErrorIs(t, err, file.ErrMissing)
+	})
+
 	t.Run("WithBase", func(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
