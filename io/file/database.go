@@ -332,47 +332,56 @@ func SpliceDatabase[
 		return err
 	}
 
-	baseFileMode := fs.FileMode(0644)
-	baseRC := io.ReadCloser(nil)
 	basePath := filepath.Join(path, FileNameBase)
-	if f, err := os.OpenFile(basePath, os.O_RDONLY, 0); err == nil {
-		baseRC = f
-		if stat, err := f.Stat(); err == nil {
-			baseFileMode = stat.Mode()
-		}
-	} else if err != nil && !os.IsNotExist(err) {
+	baseF, baseFileMode, err := mayOpenReadOnlyFile(basePath)
+	if err != nil {
 		return err
 	}
+	baseR := io.Reader(nil)
+	if baseF != nil {
+		baseR = baseF
+	}
 
-	logFileMode := fs.FileMode(0644)
-	logRC := io.ReadCloser(nil)
 	logPath := filepath.Join(path, FileNameLog)
-	if f, err := os.OpenFile(logPath, os.O_RDONLY, 0); err == nil {
-		logRC = f
-		if stat, err := f.Stat(); err == nil {
-			logFileMode = stat.Mode()
-		}
-	} else if err != nil && !os.IsNotExist(err) {
+	logF, logFileMode, err := mayOpenReadOnlyFile(logPath)
+	if err != nil {
 		return err
+	}
+	logR := io.Reader(nil)
+	if logF != nil {
+		logR = logF
+	}
+
+	if options.sourceKeyFunc != nil {
+		sourceKey, err := options.sourceKeyFunc(meta)
+		if err != nil {
+			return fmt.Errorf("derive source key: %w", err)
+		}
+
+		br, err := crypto.NewBlockReader(baseR, sourceKey)
+		if err != nil {
+			return fmt.Errorf("new block reader: %w", err)
+		}
+		baseR = br
+
+		lr, err := crypto.NewLineReader(logR, sourceKey)
+		if err != nil {
+			return fmt.Errorf("new line reader: %w", err)
+		}
+		logR = lr
 	}
 
 	newBasePath := filepath.Join(path, FileNameNewBase)
-	newBaseF, err := os.OpenFile(newBasePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC, baseFileMode)
+	newBaseF, err := createWriteOnlyFile(newBasePath, baseFileMode)
 	if err != nil {
-		if os.IsExist(err) {
-			return fmt.Errorf("create base %s: %w", newBasePath, ErrAlreadyExists)
-		}
-		return err
+		return fmt.Errorf("create base %s: %w", newBasePath, ErrAlreadyExists)
 	}
 	newBaseWC := io.WriteCloser(newBaseF)
 
 	newLogPath := filepath.Join(path, FileNameNewLog)
-	newLogF, err := os.OpenFile(newLogPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC, logFileMode)
+	newLogF, err := createWriteOnlyFile(newLogPath, logFileMode)
 	if err != nil {
-		if os.IsExist(err) {
-			return fmt.Errorf("create log %s: %w", newLogPath, ErrAlreadyExists)
-		}
-		return err
+		return fmt.Errorf("create log %s: %w", newLogPath, ErrAlreadyExists)
 	}
 	newLogWC := io.WriteCloser(newLogF)
 
@@ -403,12 +412,12 @@ func SpliceDatabase[
 		return nil
 	}
 
-	if err := tapeio.SpliceDatabase[B, S, F](f, newBaseWC, newLogWC, baseRC, logRC, options.rebaseLogEntries, baseOrChangeWrittenFn); err != nil {
+	if err := tapeio.SpliceDatabase[B, S, F](f, newBaseWC, newLogWC, baseR, logR, options.rebaseLogEntries, baseOrChangeWrittenFn); err != nil {
 		return err
 	}
 
-	if baseRC != nil {
-		if err := baseRC.Close(); err != nil {
+	if baseF != nil {
+		if err := baseF.Close(); err != nil {
 			return err
 		}
 	}
@@ -417,8 +426,8 @@ func SpliceDatabase[
 	}
 	newBaseF.Close() // ignore the error since the file might be already closed
 
-	if logRC != nil {
-		if err := logRC.Close(); err != nil {
+	if logF != nil {
+		if err := logF.Close(); err != nil {
 			return err
 		}
 	}
@@ -472,32 +481,6 @@ func deleteUnreferencedPayloads(path string, ids []string) error {
 	return nil
 }
 
-// func (db *FileDatabase) Close() error {
-// 	if err := db.changesC.Close(); err != nil {
-// 		return err
-// 	}
-// 	return nil
-// }
-
-// func (db *FileDatabase) Header() Header {
-// 	return db.db.Header()
-// }
-
-// func (db *FileDatabase) State() State {
-// 	return db.db.State()
-// }
-
-// func (db *FileDatabase) ChangesCount() int {
-// 	return db.db.ChangesCount()
-// }
-
-// func appendPayloadIDs(ids []string, container interface{}) []string {
-// 	if c, ok := container.(PayloadContainer); ok {
-// 		return append(ids, c.PayloadIDs()...)
-// 	}
-// 	return ids
-// }
-
 func stringsContain(values []string, value string) bool {
 	for _, v := range values {
 		if v == value {
@@ -505,4 +488,31 @@ func stringsContain(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func mayOpenReadOnlyFile(path string) (*os.File, fs.FileMode, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY, 0)
+	if os.IsNotExist(err) {
+		return nil, 0644, nil
+	}
+	if err != nil {
+		return nil, 0644, err
+	}
+
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, 0644, err
+	}
+	return f, stat.Mode(), nil
+}
+
+func createWriteOnlyFile(path string, mode fs.FileMode) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC, mode)
+	if err != nil {
+		if os.IsExist(err) {
+			return nil, ErrAlreadyExists
+		}
+		return nil, err
+	}
+	return f, nil
 }

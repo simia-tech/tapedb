@@ -365,4 +365,43 @@ counter-inc {"value":2}
 			assert.Equal(t, "AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOWL8QRCFTMvPMceWUFI6Ztdce\n", readFile(t, filepath.Join(path, file.FileNameLog)))
 		})
 	})
+
+	t.Run("FromEncryptedToPlain", func(t *testing.T) {
+		file.NonceFn = crypto.FixedNonceFn(testNonce)
+
+		t.Run("WithBaseAndLog", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
+
+			makeFileBase64(t, filepath.Join(path, file.FileNameBase), "AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ")
+			makeFile(t, filepath.Join(path, file.FileNameLog), "AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOWL8QRCFTMvPMceWUFI6Ztdce\n")
+
+			require.NoError(t,
+				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithSourceKey(testKey)))
+
+			assert.Equal(t, "{\"value\":21}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t, "counter-inc {\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+		})
+	})
+
+	t.Run("FromEncryptedToEncrypted", func(t *testing.T) {
+		file.NonceFn = crypto.FixedNonceFn(testNonce)
+
+		t.Run("WithBaseAndLog", func(t *testing.T) {
+			path, removeDir := makeTempDir(t)
+			defer removeDir()
+
+			makeFileBase64(t, filepath.Join(path, file.FileNameBase), "AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ")
+			makeFile(t, filepath.Join(path, file.FileNameLog), "AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOWL8QRCFTMvPMceWUFI6Ztdce\n")
+
+			require.NoError(t,
+				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](
+					test.NewFactory(),
+					path,
+					file.WithSourceKey(testKey), file.WithTargetKey(testKey)))
+
+			assert.Equal(t, "AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ", readFileBase64(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t, "AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOWL8QRCFTMvPMceWUFI6Ztdce\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+		})
+	})
 }
