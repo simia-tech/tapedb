@@ -14,123 +14,139 @@
 
 package file
 
-// type FileDeck struct {
-// 	model          *Model
-// 	databases      *lru.Cache
-// 	databasesMutex sync.RWMutex
-// }
+import (
+	"os"
+	"path/filepath"
+	"sync"
 
-// func (m *Model) NewFileDeck(openDatabaseLimit int) (*FileDeck, error) {
-// 	databases, err := lru.New(openDatabaseLimit)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+	lru "github.com/hashicorp/golang-lru"
 
-// 	return &FileDeck{
-// 		model:     m,
-// 		databases: databases,
-// 	}, nil
-// }
+	"github.com/simia-tech/tapedb/v2"
+)
 
-// func (d *FileDeck) Close() error {
-// 	d.databasesMutex.Lock()
-// 	defer d.databasesMutex.Unlock()
+type Deck[
+	B tapedb.Base,
+	S tapedb.State,
+	F tapedb.Factory[B, S],
+] struct {
+	databases      *lru.Cache
+	databasesMutex sync.RWMutex
+}
 
-// 	for _, value, ok := d.databases.RemoveOldest(); ok; _, value, ok = d.databases.RemoveOldest() {
-// 		entry := value.(entry)
-// 		entry.waitGroup.Wait()
-// 		if err := entry.db.Close(); err != nil {
-// 			return err
-// 		}
-// 	}
+func NewDeck[
+	B tapedb.Base,
+	S tapedb.State,
+	F tapedb.Factory[B, S],
+](openDatabaseLimit int) (*Deck[B, S, F], error) {
+	databases, err := lru.New(openDatabaseLimit)
+	if err != nil {
+		return nil, err
+	}
 
-// 	return nil
-// }
+	return &Deck[B, S, F]{
+		databases: databases,
+	}, nil
+}
 
-// func (d *FileDeck) Len() int {
-// 	d.databasesMutex.RLock()
-// 	l := d.databases.Len()
-// 	d.databasesMutex.RUnlock()
-// 	return l
-// }
+func (d *Deck[B, S, F]) Close() error {
+	d.databasesMutex.Lock()
+	defer d.databasesMutex.Unlock()
 
-// func (d *FileDeck) Create(path string, opts ...CreateOption) error {
-// 	d.databasesMutex.Lock()
-// 	defer d.databasesMutex.Unlock()
+	for _, value, ok := d.databases.RemoveOldest(); ok; _, value, ok = d.databases.RemoveOldest() {
+		entry := value.(entry[B, S])
+		entry.waitGroup.Wait()
+		if err := entry.db.Close(); err != nil {
+			return err
+		}
+	}
 
-// 	db, err := d.model.CreateFileDatabase(path, opts...)
-// 	if err != nil {
-// 		return err
-// 	}
+	return nil
+}
 
-// 	d.databases.Add(path, entry{db: db})
+func (d *Deck[B, S, F]) Len() int {
+	d.databasesMutex.RLock()
+	l := d.databases.Len()
+	d.databasesMutex.RUnlock()
+	return l
+}
 
-// 	return nil
-// }
+func (d *Deck[B, S, F]) Create(f F, path string, opts ...CreateOption) error {
+	d.databasesMutex.Lock()
+	defer d.databasesMutex.Unlock()
 
-// func (d *FileDeck) Delete(path string) error {
-// 	d.databasesMutex.Lock()
-// 	defer d.databasesMutex.Unlock()
+	db, err := CreateDatabase[B, S, F](f, path, opts...)
+	if err != nil {
+		return err
+	}
 
-// 	if value, ok := d.databases.Get(path); ok {
-// 		entry := value.(entry)
-// 		entry.waitGroup.Wait()
-// 		if err := entry.db.Close(); err != nil {
-// 			return err
-// 		}
-// 	}
+	d.databases.Add(path, entry[B, S]{db: db})
 
-// 	if err := os.RemoveAll(path); err != nil {
-// 		return err
-// 	}
+	return nil
+}
 
-// 	d.databases.Remove(path)
+func (d *Deck[B, S, F]) Delete(path string) error {
+	d.databasesMutex.Lock()
+	defer d.databasesMutex.Unlock()
 
-// 	return nil
-// }
+	if value, ok := d.databases.Get(path); ok {
+		entry := value.(entry[B, S])
+		entry.waitGroup.Wait()
+		if err := entry.db.Close(); err != nil {
+			return err
+		}
+	}
 
-// func (d *FileDeck) ReadHeader(path string) (Header, error) {
-// 	d.databasesMutex.RLock()
+	if err := os.RemoveAll(path); err != nil {
+		return err
+	}
 
-// 	if value, ok := d.databases.Get(path); ok {
-// 		header := value.(entry).db.Header()
-// 		d.databasesMutex.RUnlock()
-// 		return header, nil
-// 	}
+	d.databases.Remove(path)
 
-// 	d.databasesMutex.RUnlock()
+	return nil
+}
 
-// 	return d.model.ReadFileDatabaseHeader(path)
-// }
+func (d *Deck[B, S, F]) ReadMeta(path string) (Meta, error) {
+	d.databasesMutex.RLock()
 
-// func (d *FileDeck) WithOpen(path string, opts []OpenOption, fn func(*FileDatabase) error) error {
-// 	d.databasesMutex.Lock()
+	if value, ok := d.databases.Get(path); ok {
+		meta := value.(entry[B, S]).db.Meta()
+		d.databasesMutex.RUnlock()
+		return meta, nil
+	}
 
-// 	value, ok := d.databases.Get(path)
-// 	if !ok {
-// 		db, err := d.model.OpenFileDatabase(path, opts...)
-// 		if err != nil {
-// 			d.databasesMutex.Unlock()
-// 			return err
-// 		}
-// 		value = entry{db: db}
-// 		d.databases.Add(path, value)
-// 	}
-// 	entry := value.(entry)
-// 	entry.waitGroup.Add(1)
+	d.databasesMutex.RUnlock()
 
-// 	d.databasesMutex.Unlock()
+	return ReadMetaFile(filepath.Join(path, FileNameMeta))
+}
 
-// 	if err := fn(entry.db); err != nil {
-// 		entry.waitGroup.Done()
-// 		return err
-// 	}
-// 	entry.waitGroup.Done()
+func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*Database[B, S]) error) error {
+	d.databasesMutex.Lock()
 
-// 	return nil
-// }
+	value, ok := d.databases.Get(path)
+	if !ok {
+		db, err := OpenDatabase[B, S](f, path, opts...)
+		if err != nil {
+			d.databasesMutex.Unlock()
+			return err
+		}
+		value = entry[B, S]{db: db}
+		d.databases.Add(path, value)
+	}
+	entry := value.(entry[B, S])
+	entry.waitGroup.Add(1)
 
-// type entry struct {
-// 	db        *FileDatabase
-// 	waitGroup sync.WaitGroup
-// }
+	d.databasesMutex.Unlock()
+
+	if err := fn(entry.db); err != nil {
+		entry.waitGroup.Done()
+		return err
+	}
+	entry.waitGroup.Done()
+
+	return nil
+}
+
+type entry[B tapedb.Base, S tapedb.State] struct {
+	db        *Database[B, S]
+	waitGroup sync.WaitGroup
+}

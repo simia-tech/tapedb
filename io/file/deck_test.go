@@ -14,83 +14,92 @@
 
 package file_test
 
-// import (
-// 	"testing"
+import (
+	"testing"
 
-// 	"github.com/stretchr/testify/assert"
-// 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-// 	"github.com/simia-tech/tapedb/v2"
-// )
+	"github.com/simia-tech/tapedb/v2/io/file"
+	"github.com/simia-tech/tapedb/v2/test"
+)
 
-// func TestFileDeck(t *testing.T) {
-// 	t.Run("Create", func(t *testing.T) {
-// 		path, removeDir := makeTempDir(t)
-// 		defer removeDir()
+func TestDeck(t *testing.T) {
+	t.Run("Create", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
 
-// 		deck, err := model.NewFileDeck(2)
-// 		require.NoError(t, err)
-// 		defer deck.Close()
+		deck, err := file.NewDeck[*test.Base, *test.State, *test.Factory](2)
+		require.NoError(t, err)
+		defer deck.Close()
 
-// 		require.NoError(t, deck.Create(path))
-// 		assert.Equal(t, 1, deck.Len())
+		testFactory := test.NewFactory()
 
-// 		assert.ErrorIs(t, deck.Create(path), tapedb.ErrDatabaseExists)
-// 		assert.Equal(t, 1, deck.Len())
+		require.NoError(t, deck.Create(testFactory, path))
+		assert.Equal(t, 1, deck.Len())
 
-// 		require.NoError(t, deck.Create(path+"/a"))
-// 		assert.Equal(t, 2, deck.Len())
+		assert.ErrorIs(t, deck.Create(testFactory, path), file.ErrAlreadyExists)
+		assert.Equal(t, 1, deck.Len())
 
-// 		require.NoError(t, deck.Create(path+"/b"))
-// 		assert.Equal(t, 2, deck.Len())
-// 	})
+		require.NoError(t, deck.Create(testFactory, path+"/a"))
+		assert.Equal(t, 2, deck.Len())
 
-// 	t.Run("Delete", func(t *testing.T) {
-// 		path, removeDir := makeTempDir(t)
-// 		defer removeDir()
+		require.NoError(t, deck.Create(testFactory, path+"/b"))
+		assert.Equal(t, 2, deck.Len())
+	})
 
-// 		deck, err := model.NewFileDeck(2)
-// 		require.NoError(t, err)
-// 		defer deck.Close()
+	t.Run("Delete", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
 
-// 		require.NoError(t, deck.Create(path))
-// 		assert.Equal(t, 1, deck.Len())
+		deck, err := file.NewDeck[*test.Base, *test.State, *test.Factory](2)
+		require.NoError(t, err)
+		defer deck.Close()
 
-// 		require.NoError(t, deck.Delete(path))
-// 		assert.Equal(t, 0, deck.Len())
-// 	})
+		testFactory := test.NewFactory()
 
-// 	t.Run("ReadHeader", func(t *testing.T) {
-// 		path, removeDir := makeTempDir(t)
-// 		defer removeDir()
+		require.NoError(t, deck.Create(testFactory, path))
+		assert.Equal(t, 1, deck.Len())
 
-// 		deck, err := model.NewFileDeck(2)
-// 		require.NoError(t, err)
-// 		defer deck.Close()
+		require.NoError(t, deck.Delete(path))
+		assert.Equal(t, 0, deck.Len())
+	})
 
-// 		require.NoError(t, deck.Create(path, tapedb.WithHeader(tapedb.Header{"Test": []string{"Value"}})))
-// 		assert.Equal(t, 1, deck.Len())
+	t.Run("ReadMeta", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
 
-// 		header, err := deck.ReadHeader(path)
-// 		require.NoError(t, err)
-// 		assert.Equal(t, tapedb.Header{"Test": []string{"Value"}}, header)
-// 	})
+		deck, err := file.NewDeck[*test.Base, *test.State, *test.Factory](2)
+		require.NoError(t, err)
+		defer deck.Close()
 
-// 	t.Run("WithOpen", func(t *testing.T) {
-// 		path, removeDir := makeTempDir(t)
-// 		defer removeDir()
+		testFactory := test.NewFactory()
 
-// 		db, err := model.CreateFileDatabase(path, tapedb.WithCreateKey(testKey))
-// 		require.NoError(t, err)
-// 		require.NoError(t, db.Close())
+		require.NoError(t, deck.Create(testFactory, path, file.WithMeta(file.Meta{"Test": []string{"Value"}})))
+		assert.Equal(t, 1, deck.Len())
 
-// 		deck, err := model.NewFileDeck(2)
-// 		require.NoError(t, err)
-// 		defer deck.Close()
+		meta, err := deck.ReadMeta(path)
+		require.NoError(t, err)
+		assert.Equal(t, file.Meta{"Test": []string{"Value"}}, meta)
+	})
 
-// 		err = deck.WithOpen(path, []tapedb.OpenOption{tapedb.WithOpenKey(testKey)}, func(db *tapedb.FileDatabase) error {
-// 			return nil
-// 		})
-// 		require.NoError(t, err)
-// 	})
-// }
+	t.Run("WithOpen", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
+
+		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		require.NoError(t, err)
+		require.NoError(t, db.Close())
+
+		deck, err := file.NewDeck[*test.Base, *test.State, *test.Factory](2)
+		require.NoError(t, err)
+		defer deck.Close()
+
+		testFactory := test.NewFactory()
+
+		err = deck.WithOpen(testFactory, path, []file.OpenOption{file.WithOpenKey(testKey)}, func(db *file.Database[*test.Base, *test.State]) error {
+			return nil
+		})
+		require.NoError(t, err)
+	})
+}

@@ -124,6 +124,10 @@ func (db *Database[B, S]) Apply(c tapedb.Change) error {
 	return nil
 }
 
+func (db *Database[B, S]) Close() error {
+	return nil
+}
+
 func (db *Database[B, S]) LogLen() int {
 	return db.logLen
 }

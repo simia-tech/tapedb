@@ -43,3 +43,7 @@ func (db *Database[B, S]) State() S {
 func (db *Database[B, S]) Apply(c tapedb.Change) error {
 	return db.state.Apply(c)
 }
+
+func (db *Database[B, S]) Close() error {
+	return nil
+}

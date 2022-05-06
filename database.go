@@ -18,4 +18,5 @@ type Database[B Base, S State] interface {
 	Base() B
 	State() S
 	Apply(Change) error
+	Close() error
 }

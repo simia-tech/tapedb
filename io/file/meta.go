@@ -20,11 +20,22 @@ import (
 	"fmt"
 	"io"
 	"net/textproto"
+	"os"
 	"sort"
 	"strconv"
 )
 
 type Meta textproto.MIMEHeader
+
+func ReadMetaFile(path string) (Meta, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return ReadMeta(f)
+}
 
 func ReadMeta(r io.Reader) (Meta, error) {
 	if r == nil {

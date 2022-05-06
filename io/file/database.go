@@ -62,10 +62,26 @@ func CreateDatabase[
 		opt(&options)
 	}
 
+	meta := options.metaFunc()
+	if len(meta) > 0 {
+		metaPath := filepath.Join(path, FileNameMeta)
+		metaF, err := os.OpenFile(metaPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_SYNC, options.fileMode)
+		if os.IsExist(err) {
+			return nil, fmt.Errorf("create meta %s: %w", metaPath, ErrAlreadyExists)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err := meta.WriteTo(metaF); err != nil {
+			return nil, err
+		}
+	}
+
 	key := []byte(nil)
 	err := error(nil)
 	if options.keyFunc != nil {
-		key, err = options.keyFunc(Meta{})
+		key, err = options.keyFunc(meta)
 		if err != nil {
 			return nil, fmt.Errorf("derive key: %w", err)
 		}
@@ -110,7 +126,7 @@ func CreateDatabase[
 	return &Database[B, S]{
 		path:       path,
 		fileMode:   options.fileMode,
-		meta:       Meta{},
+		meta:       meta,
 		db:         db,
 		logCloseFn: logCloseFn,
 	}, nil
