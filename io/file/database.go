@@ -260,6 +260,10 @@ func (db *Database[B, S]) Meta() Meta {
 	return db.meta
 }
 
+func (db *Database[B, S]) Key() []byte {
+	return db.key
+}
+
 func (db *Database[B, S]) LogLen() int {
 	return db.db.LogLen()
 }
