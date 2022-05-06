@@ -62,6 +62,10 @@ func CreateDatabase[
 		opt(&options)
 	}
 
+	if err := os.MkdirAll(path, options.directoryMode); err != nil {
+		return nil, fmt.Errorf("make directory: %w", err)
+	}
+
 	meta := options.metaFunc()
 	if len(meta) > 0 {
 		metaPath := filepath.Join(path, FileNameMeta)
@@ -85,10 +89,6 @@ func CreateDatabase[
 		if err != nil {
 			return nil, fmt.Errorf("derive key: %w", err)
 		}
-	}
-
-	if err := os.MkdirAll(path, options.directoryMode); err != nil {
-		return nil, fmt.Errorf("make directory: %w", err)
 	}
 
 	logPath := filepath.Join(path, FileNameLog)
