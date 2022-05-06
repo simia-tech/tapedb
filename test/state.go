@@ -14,14 +14,19 @@
 
 package test
 
-import "github.com/simia-tech/tapedb/v2"
+import (
+	"sync"
+
+	"github.com/simia-tech/tapedb/v2"
+)
 
 type State struct {
-	Counter int
+	Counter    int
+	ReadLocker sync.Locker
 }
 
-func NewState(b *Base) *State {
-	return &State{Counter: b.Value}
+func NewState(b *Base, rl sync.Locker) *State {
+	return &State{Counter: b.Value, ReadLocker: rl}
 }
 
 func (s *State) Apply(c tapedb.Change) error {

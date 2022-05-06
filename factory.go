@@ -14,7 +14,10 @@
 
 package tapedb
 
-import "errors"
+import (
+	"errors"
+	"sync"
+)
 
 var (
 	ErrUnknownChangeType = errors.New("unknown change type")
@@ -22,6 +25,6 @@ var (
 
 type Factory[B Base, S State] interface {
 	NewBase() B
-	NewState(B) S
+	NewState(B, sync.Locker) S
 	NewChange(string) (Change, error)
 }

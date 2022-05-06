@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/simia-tech/tapedb/v2"
 )
@@ -29,10 +30,11 @@ var (
 )
 
 type Database[B tapedb.Base, S tapedb.State] struct {
-	base   B
-	state  S
-	logW   io.Writer
-	logLen int
+	base       B
+	state      S
+	logW       io.Writer
+	logLen     int
+	stateMutex *sync.RWMutex
 }
 
 func NewDatabase[
@@ -44,12 +46,15 @@ func NewDatabase[
 	logW io.Writer,
 ) (*Database[B, S], error) {
 	base := f.NewBase()
-	state := f.NewState(base)
+
+	stateMutex := &sync.RWMutex{}
+	state := f.NewState(base, stateMutex.RLocker())
 
 	return &Database[B, S]{
-		base:  base,
-		state: state,
-		logW:  logW,
+		base:       base,
+		state:      state,
+		logW:       logW,
+		stateMutex: stateMutex,
 	}, nil
 }
 
@@ -70,7 +75,8 @@ func OpenDatabase[
 		}
 	}
 
-	state := f.NewState(base)
+	stateMutex := &sync.RWMutex{}
+	state := f.NewState(base, stateMutex.RLocker())
 
 	logLen := 0
 	if logR != nil {
@@ -95,10 +101,11 @@ func OpenDatabase[
 	}
 
 	return &Database[B, S]{
-		base:   base,
-		state:  state,
-		logW:   logW,
-		logLen: logLen,
+		base:       base,
+		state:      state,
+		logW:       logW,
+		logLen:     logLen,
+		stateMutex: stateMutex,
 	}, nil
 }
 
@@ -111,6 +118,9 @@ func (db *Database[B, S]) State() S {
 }
 
 func (db *Database[B, S]) Apply(c tapedb.Change) error {
+	db.stateMutex.Lock()
+	defer db.stateMutex.Unlock()
+
 	if err := db.state.Apply(c); err != nil {
 		return err
 	}

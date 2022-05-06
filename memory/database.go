@@ -15,20 +15,27 @@
 package memory
 
 import (
+	"sync"
+
 	"github.com/simia-tech/tapedb/v2"
 )
 
 type Database[B tapedb.Base, S tapedb.State] struct {
-	base  B
-	state S
+	base       B
+	state      S
+	stateMutex *sync.RWMutex
 }
 
 func NewDatabase[B tapedb.Base, S tapedb.State](f tapedb.Factory[B, S]) (tapedb.Database[B, S], error) {
 	base := f.NewBase()
-	state := f.NewState(base)
+
+	stateMutex := &sync.RWMutex{}
+	state := f.NewState(base, stateMutex)
+
 	return &Database[B, S]{
-		base:  base,
-		state: state,
+		base:       base,
+		state:      state,
+		stateMutex: stateMutex,
 	}, nil
 }
 

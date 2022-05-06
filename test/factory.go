@@ -16,6 +16,7 @@ package test
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/simia-tech/tapedb/v2"
 )
@@ -30,8 +31,8 @@ func (f *Factory) NewBase() *Base {
 	return NewBase()
 }
 
-func (f *Factory) NewState(base *Base) *State {
-	return NewState(base)
+func (f *Factory) NewState(base *Base, readLocker sync.Locker) *State {
+	return NewState(base, readLocker)
 }
 
 func (f *Factory) NewChange(typeName string) (tapedb.Change, error) {
