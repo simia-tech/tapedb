@@ -328,6 +328,20 @@ func (db *Database[B, S]) OpenPayload(id string) (io.ReadCloser, error) {
 	return tapeio.NewReadCloser(r, f.Close), nil
 }
 
+func (db *Database[B, S]) StatPayload(id string) (fs.FileInfo, error) {
+	path := db.payloadPath(id)
+
+	stat, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrPayloadMissing
+		}
+		return nil, err
+	}
+
+	return stat, nil
+}
+
 func (db *Database[B, S]) payloadPath(id string) string {
 	return filepath.Join(db.path, FilePrefixPayload+id)
 }

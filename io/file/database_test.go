@@ -285,6 +285,46 @@ func TestDatabaseOpenPayload(t *testing.T) {
 	})
 }
 
+func TestDatabaseStatPayload(t *testing.T) {
+	t.Run("Plain", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
+
+		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		require.NoError(t, err)
+		defer db.Close()
+
+		require.NoError(t,
+			db.Apply(
+				&test.ChangeAttachPayload{PayloadID: "123"},
+				file.NewPayload("123", strings.NewReader("test content"))))
+
+		stat, err := db.StatPayload("123")
+		require.NoError(t, err)
+		assert.Equal(t, "payload-123", stat.Name())
+		assert.Equal(t, int64(12), stat.Size())
+	})
+
+	t.Run("Encrypted", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
+
+		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		require.NoError(t, err)
+		defer db.Close()
+
+		require.NoError(t,
+			db.Apply(
+				&test.ChangeAttachPayload{PayloadID: "123"},
+				file.NewPayload("123", strings.NewReader("test content"))))
+
+		stat, err := db.StatPayload("123")
+		require.NoError(t, err)
+		assert.Equal(t, "payload-123", stat.Name())
+		assert.Equal(t, int64(12), stat.Size())
+	})
+}
+
 func TestDatabaseSplice(t *testing.T) {
 	t.Run("FromPlainToPlain", func(t *testing.T) {
 		t.Run("NoFile", func(t *testing.T) {
