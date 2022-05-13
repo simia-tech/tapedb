@@ -195,7 +195,9 @@ func OpenDatabase[
 		if err != nil {
 			return nil, fmt.Errorf("derive key: %w", err)
 		}
+	}
 
+	if len(key) > 0 {
 		if baseR != nil {
 			br, err := crypto.NewBlockReader(baseR, key)
 			if err != nil {
@@ -392,12 +394,16 @@ func SpliceDatabase[
 		logR = logF
 	}
 
+	sourceKey := []byte(nil)
 	if options.sourceKeyFunc != nil {
-		sourceKey, err := options.sourceKeyFunc(meta)
+		key, err := options.sourceKeyFunc(meta)
 		if err != nil {
 			return fmt.Errorf("derive source key: %w", err)
 		}
+		sourceKey = key
+	}
 
+	if len(sourceKey) > 0 {
 		br, err := crypto.NewBlockReader(baseR, sourceKey)
 		if err != nil {
 			return fmt.Errorf("new block reader: %w", err)
@@ -425,12 +431,16 @@ func SpliceDatabase[
 	}
 	newLogWC := io.WriteCloser(newLogF)
 
+	targetKey := []byte(nil)
 	if options.targetKeyFunc != nil {
-		targetKey, err := options.targetKeyFunc(meta)
+		key, err := options.targetKeyFunc(meta)
 		if err != nil {
 			return fmt.Errorf("derive target key: %w", err)
 		}
+		targetKey = key
+	}
 
+	if len(targetKey) > 0 {
 		bw, err := crypto.NewBlockWriter(newBaseWC, targetKey, NonceFn)
 		if err != nil {
 			return fmt.Errorf("new block writer: %w", err)
