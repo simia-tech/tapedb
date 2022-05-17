@@ -67,6 +67,16 @@ func CreateDatabase[
 	}
 
 	meta := options.metaFunc()
+
+	key := []byte(nil)
+	err := error(nil)
+	if options.keyFunc != nil {
+		key, err = options.keyFunc(meta)
+		if err != nil {
+			return nil, fmt.Errorf("derive key: %w", err)
+		}
+	}
+
 	if len(meta) > 0 {
 		metaPath := filepath.Join(path, FileNameMeta)
 		metaF, err := os.OpenFile(metaPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_SYNC, options.fileMode)
@@ -79,15 +89,6 @@ func CreateDatabase[
 
 		if _, err := meta.WriteTo(metaF); err != nil {
 			return nil, err
-		}
-	}
-
-	key := []byte(nil)
-	err := error(nil)
-	if options.keyFunc != nil {
-		key, err = options.keyFunc(meta)
-		if err != nil {
-			return nil, fmt.Errorf("derive key: %w", err)
 		}
 	}
 

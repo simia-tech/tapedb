@@ -98,6 +98,9 @@ func OpenDatabase[
 
 			logLen++
 		}
+		if scanner.Err() != nil {
+			return nil, scanner.Err()
+		}
 	}
 
 	return &Database[B, S]{
