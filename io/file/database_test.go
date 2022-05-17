@@ -107,6 +107,22 @@ counter-inc {"value":2}
 		assert.Equal(t, 2, db.LogLen())
 		assert.Equal(t, 6, db.State().Counter)
 	})
+
+	t.Run("WithEncryptedLog", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
+
+		makeFile(t, filepath.Join(path, file.FileNameLog), `
+RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg
+`)
+
+		db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testKey))
+		require.NoError(t, err)
+		defer db.Close()
+
+		assert.Equal(t, 1, db.LogLen())
+		assert.Equal(t, 21, db.State().Counter)
+	})
 }
 
 func TestDatabaseApply(t *testing.T) {

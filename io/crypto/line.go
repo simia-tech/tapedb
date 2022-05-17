@@ -139,10 +139,16 @@ func NewLineReader[R io.Reader](r R, key []byte) (*LineReader[R], error) {
 
 func (r *LineReader[R]) Read(data []byte) (int, error) {
 	if r.s.Scan() {
-		line := make([]byte, base64.RawStdEncoding.DecodedLen(len(r.s.Bytes())))
-		if _, err := base64.RawStdEncoding.Decode(line, r.s.Bytes()); err != nil {
+		lineBytes := bytes.TrimSpace(r.s.Bytes())
+		if len(lineBytes) == 0 {
+			return 0, nil
+		}
+
+		line := make([]byte, base64.RawStdEncoding.DecodedLen(len(lineBytes)))
+		if _, err := base64.RawStdEncoding.Decode(line, lineBytes); err != nil {
 			return 0, err
 		}
+		line = bytes.TrimSpace(line)
 
 		nonce, cipherText := line[:r.gcm.NonceSize()], line[r.gcm.NonceSize():]
 
