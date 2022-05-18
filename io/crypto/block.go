@@ -23,9 +23,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const BlockSize = 4096
+
+var ErrInvalidKey = errors.New("invalid key")
 
 type BlockWriter[W io.Writer] struct {
 	w            W
@@ -181,6 +184,9 @@ func (r *BlockReader[R]) readBlock() (io.Reader, error) {
 
 	plainText, err := r.gcm.Open(nil, r.nonce, cipherText, nil)
 	if err != nil {
+		if strings.HasSuffix(err.Error(), "message authentication failed") {
+			return nil, ErrInvalidKey
+		}
 		return nil, err
 	}
 	r.advanceNonce()

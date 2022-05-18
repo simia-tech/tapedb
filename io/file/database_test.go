@@ -50,7 +50,7 @@ func TestCreateDatabase(t *testing.T) {
 
 		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
 		require.Nil(t, db)
-		assert.ErrorIs(t, err, file.ErrAlreadyExists)
+		assert.ErrorIs(t, err, file.ErrExisting)
 	})
 
 	t.Run("Encrypted", func(t *testing.T) {
@@ -115,6 +115,9 @@ counter-inc {"value":2}
 		makeFile(t, filepath.Join(path, file.FileNameLog), `
 RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg
 `)
+
+		_, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testInvalidKey))
+		assert.ErrorIs(t, err, file.ErrInvalidKey)
 
 		db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testKey))
 		require.NoError(t, err)

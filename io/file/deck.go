@@ -15,6 +15,7 @@
 package file
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"sync"
@@ -133,6 +134,16 @@ func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*D
 		d.databases.Add(path, value)
 	}
 	entry := value.(entry[B, S])
+
+	key, err := deriveKey(opts, entry.db.Meta())
+	if err != nil {
+		d.databasesMutex.Unlock()
+		return err
+	}
+	if !bytes.Equal(entry.db.Key(), key) {
+		d.databasesMutex.Unlock()
+		return ErrInvalidKey
+	}
 	entry.waitGroup.Add(1)
 
 	d.databasesMutex.Unlock()
@@ -149,4 +160,17 @@ func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*D
 type entry[B tapedb.Base, S tapedb.State] struct {
 	db        *Database[B, S]
 	waitGroup sync.WaitGroup
+}
+
+func deriveKey(opts []OpenOption, meta Meta) ([]byte, error) {
+	options := defaultOpenOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	if options.keyFunc != nil {
+		return options.keyFunc(meta)
+	}
+
+	return nil, nil
 }

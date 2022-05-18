@@ -38,7 +38,7 @@ func TestDeck(t *testing.T) {
 		require.NoError(t, deck.Create(testFactory, path))
 		assert.Equal(t, 1, deck.Len())
 
-		assert.ErrorIs(t, deck.Create(testFactory, path), file.ErrAlreadyExists)
+		assert.ErrorIs(t, deck.Create(testFactory, path), file.ErrExisting)
 		assert.Equal(t, 1, deck.Len())
 
 		require.NoError(t, deck.Create(testFactory, path+"/a"))
@@ -101,5 +101,10 @@ func TestDeck(t *testing.T) {
 			return nil
 		})
 		require.NoError(t, err)
+
+		err = deck.WithOpen(testFactory, path, []file.OpenOption{file.WithOpenKey(testInvalidKey)}, func(db *file.Database[*test.Base, *test.State]) error {
+			return nil
+		})
+		assert.ErrorIs(t, err, file.ErrInvalidKey)
 	})
 }

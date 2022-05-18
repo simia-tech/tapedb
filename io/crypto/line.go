@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strings"
 )
 
 type LineWriter[W io.Writer] struct {
@@ -154,6 +155,9 @@ func (r *LineReader[R]) Read(data []byte) (int, error) {
 
 		plainText, err := r.gcm.Open(nil, nonce, cipherText, nil)
 		if err != nil {
+			if strings.HasSuffix(err.Error(), "message authentication failed") {
+				return 0, ErrInvalidKey
+			}
 			return 0, err
 		}
 

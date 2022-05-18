@@ -33,8 +33,9 @@ const (
 )
 
 var (
-	ErrMissing       = errors.New("missing")
-	ErrAlreadyExists = errors.New("already exists")
+	ErrMissing    = errors.New("missing")
+	ErrExisting   = errors.New("existing")
+	ErrInvalidKey = errors.New("invalid key")
 )
 
 var NonceFn crypto.NonceFunc = crypto.RandomNonceFn()
@@ -81,7 +82,7 @@ func CreateDatabase[
 		metaPath := filepath.Join(path, FileNameMeta)
 		metaF, err := os.OpenFile(metaPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_SYNC, options.fileMode)
 		if os.IsExist(err) {
-			return nil, fmt.Errorf("create meta %s: %w", metaPath, ErrAlreadyExists)
+			return nil, fmt.Errorf("create meta %s: %w", metaPath, ErrExisting)
 		}
 		if err != nil {
 			return nil, err
@@ -95,7 +96,7 @@ func CreateDatabase[
 	logPath := filepath.Join(path, FileNameLog)
 	logF, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_SYNC, options.fileMode)
 	if os.IsExist(err) {
-		return nil, fmt.Errorf("create log %s: %w", logPath, ErrAlreadyExists)
+		return nil, fmt.Errorf("create log %s: %w", logPath, ErrExisting)
 	}
 	if err != nil {
 		return nil, err
@@ -231,6 +232,9 @@ func OpenDatabase[
 
 	db, err := tapeio.OpenDatabase[B, S, F](f, baseR, logR, logWC)
 	if err != nil {
+		if errors.Is(err, crypto.ErrInvalidKey) {
+			return nil, ErrInvalidKey
+		}
 		return nil, err
 	}
 
@@ -421,14 +425,14 @@ func SpliceDatabase[
 	newBasePath := filepath.Join(path, FileNameNewBase)
 	newBaseF, err := createWriteOnlyFile(newBasePath, baseFileMode)
 	if err != nil {
-		return fmt.Errorf("create base %s: %w", newBasePath, ErrAlreadyExists)
+		return fmt.Errorf("create base %s: %w", newBasePath, ErrExisting)
 	}
 	newBaseWC := io.WriteCloser(newBaseF)
 
 	newLogPath := filepath.Join(path, FileNameNewLog)
 	newLogF, err := createWriteOnlyFile(newLogPath, logFileMode)
 	if err != nil {
-		return fmt.Errorf("create log %s: %w", newLogPath, ErrAlreadyExists)
+		return fmt.Errorf("create log %s: %w", newLogPath, ErrExisting)
 	}
 	newLogWC := io.WriteCloser(newLogF)
 
@@ -561,7 +565,7 @@ func createWriteOnlyFile(path string, mode fs.FileMode) (*os.File, error) {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC, mode)
 	if err != nil {
 		if os.IsExist(err) {
-			return nil, ErrAlreadyExists
+			return nil, ErrExisting
 		}
 		return nil, err
 	}
