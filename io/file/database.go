@@ -129,6 +129,7 @@ func CreateDatabase[
 		path:       path,
 		fileMode:   options.fileMode,
 		meta:       meta,
+		key:        key,
 		db:         db,
 		logCloseFn: logCloseFn,
 	}, nil
