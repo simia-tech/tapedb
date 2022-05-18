@@ -100,7 +100,12 @@ func TestDeck(t *testing.T) {
 		err = deck.WithOpen(testFactory, path, []file.OpenOption{file.WithOpenKey(testKey)}, func(db *file.Database[*test.Base, *test.State]) error {
 			return nil
 		})
-		require.NoError(t, err)
+		assert.NoError(t, err)
+
+		err = deck.WithOpen(testFactory, path, []file.OpenOption{file.WithOpenKey(testKey)}, func(db *file.Database[*test.Base, *test.State]) error {
+			return nil
+		})
+		assert.NoError(t, err)
 
 		err = deck.WithOpen(testFactory, path, []file.OpenOption{file.WithOpenKey(testInvalidKey)}, func(db *file.Database[*test.Base, *test.State]) error {
 			return nil
