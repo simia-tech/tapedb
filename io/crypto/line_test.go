@@ -15,6 +15,7 @@
 package crypto_test
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io/ioutil"
@@ -55,4 +56,29 @@ func TestLineReader(t *testing.T) {
 
 		assert.Equal(t, "test\ntest\n", string(plainText))
 	})
+}
+
+func TestLineWriterAndReader(t *testing.T) {
+	cipherText := bytes.Buffer{}
+
+	w, err := crypto.NewLineWriter(&cipherText, testKey, crypto.RandomNonceFn())
+	require.NoError(t, err)
+
+	for index := 0; index < 50; index++ {
+		fmt.Fprintf(w, "index = %d\n", index)
+	}
+
+	require.NoError(t, w.Close())
+
+	r, err := crypto.NewLineReader(&cipherText, testKey)
+	require.NoError(t, err)
+
+	scanner := bufio.NewScanner(r)
+
+	for index := 0; scanner.Scan(); index++ {
+		assert.Equal(t,
+			fmt.Sprintf("index = %d", index),
+			scanner.Text())
+	}
+	require.NoError(t, scanner.Err())
 }

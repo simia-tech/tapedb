@@ -25,6 +25,8 @@ import (
 	"strings"
 )
 
+var base64Encoding = base64.RawStdEncoding
+
 type LineWriter[W io.Writer] struct {
 	w       W
 	gcm     cipher.AEAD
@@ -60,17 +62,9 @@ func (w *LineWriter[W]) Write(data []byte) (int, error) {
 
 		cipherText := w.gcm.Seal(nil, nonce, w.buffer.Bytes(), nil)
 
-		wc := base64.NewEncoder(base64.RawStdEncoding, w.w)
-		if _, err := io.Copy(wc, bytes.NewReader(nonce)); err != nil {
-			return 0, err
-		}
-		if _, err := io.Copy(wc, bytes.NewReader(cipherText)); err != nil {
-			return 0, err
-		}
-		if err := wc.Close(); err != nil {
-			return 0, err
-		}
-		if _, err := fmt.Fprint(w.w, "\n"); err != nil {
+		encoded := base64Encoding.EncodeToString(append(nonce, cipherText...))
+
+		if _, err := fmt.Fprintln(w.w, encoded); err != nil {
 			return 0, err
 		}
 
@@ -95,17 +89,9 @@ func (w *LineWriter[W]) Close() error {
 
 	cipherText := w.gcm.Seal(nil, nonce, w.buffer.Bytes(), nil)
 
-	wc := base64.NewEncoder(base64.RawStdEncoding, w.w)
-	if _, err := io.Copy(wc, bytes.NewReader(nonce)); err != nil {
-		return err
-	}
-	if _, err := io.Copy(wc, bytes.NewReader(cipherText)); err != nil {
-		return err
-	}
-	if err := wc.Close(); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprint(w.w, "\n"); err != nil {
+	encoded := base64Encoding.EncodeToString(append(nonce, cipherText...))
+
+	if _, err := fmt.Fprintln(w.w, encoded); err != nil {
 		return err
 	}
 
@@ -140,18 +126,17 @@ func NewLineReader[R io.Reader](r R, key []byte) (*LineReader[R], error) {
 
 func (r *LineReader[R]) Read(data []byte) (int, error) {
 	if r.s.Scan() {
-		lineBytes := bytes.TrimSpace(r.s.Bytes())
-		if len(lineBytes) == 0 {
+		line := strings.TrimSpace(r.s.Text())
+		if len(line) == 0 {
 			return 0, nil
 		}
 
-		line := make([]byte, base64.RawStdEncoding.DecodedLen(len(lineBytes)))
-		if _, err := base64.RawStdEncoding.Decode(line, lineBytes); err != nil {
-			return 0, err
+		lineBytes, err := base64Encoding.DecodeString(line)
+		if err != nil {
+			return 0, fmt.Errorf("decode base64: %w", err)
 		}
-		line = bytes.TrimSpace(line)
 
-		nonce, cipherText := line[:r.gcm.NonceSize()], line[r.gcm.NonceSize():]
+		nonce, cipherText := lineBytes[:r.gcm.NonceSize()], lineBytes[r.gcm.NonceSize():]
 
 		plainText, err := r.gcm.Open(nil, nonce, cipherText, nil)
 		if err != nil {

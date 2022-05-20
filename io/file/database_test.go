@@ -340,7 +340,7 @@ func TestDatabaseStatPayload(t *testing.T) {
 		stat, err := db.StatPayload("123")
 		require.NoError(t, err)
 		assert.Equal(t, "payload-123", stat.Name())
-		assert.Equal(t, int64(12), stat.Size())
+		assert.Equal(t, int64(42), stat.Size())
 	})
 }
 
