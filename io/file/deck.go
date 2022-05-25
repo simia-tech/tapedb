@@ -54,9 +54,13 @@ func (d *Deck[B, S, F]) Close() error {
 	defer d.databasesMutex.Unlock()
 
 	for _, value, ok := d.databases.RemoveOldest(); ok; _, value, ok = d.databases.RemoveOldest() {
-		entry := value.(entry[B, S])
-		entry.waitGroup.Wait()
-		if err := entry.db.Close(); err != nil {
+		entry := value.(*entry[B, S])
+
+		entry.dbMutex.Lock()
+		err := entry.db.Close()
+		entry.dbMutex.Unlock()
+
+		if err != nil {
 			return err
 		}
 	}
@@ -80,7 +84,7 @@ func (d *Deck[B, S, F]) Create(f F, path string, opts ...CreateOption) error {
 		return err
 	}
 
-	d.databases.Add(path, entry[B, S]{db: db})
+	d.databases.Add(path, &entry[B, S]{db: db})
 
 	return nil
 }
@@ -90,9 +94,13 @@ func (d *Deck[B, S, F]) Delete(path string) error {
 	defer d.databasesMutex.Unlock()
 
 	if value, ok := d.databases.Get(path); ok {
-		entry := value.(entry[B, S])
-		entry.waitGroup.Wait()
-		if err := entry.db.Close(); err != nil {
+		entry := value.(*entry[B, S])
+
+		entry.dbMutex.Lock()
+		err := entry.db.Close()
+		entry.dbMutex.Unlock()
+
+		if err != nil {
 			return err
 		}
 	}
@@ -110,7 +118,7 @@ func (d *Deck[B, S, F]) ReadMeta(path string) (Meta, error) {
 	d.databasesMutex.RLock()
 
 	if value, ok := d.databases.Get(path); ok {
-		meta := value.(entry[B, S]).db.Meta()
+		meta := value.(*entry[B, S]).db.Meta()
 		d.databasesMutex.RUnlock()
 		return meta, nil
 	}
@@ -130,10 +138,10 @@ func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*D
 			d.databasesMutex.Unlock()
 			return err
 		}
-		value = entry[B, S]{db: db}
+		value = &entry[B, S]{db: db}
 		d.databases.Add(path, value)
 	}
-	entry := value.(entry[B, S])
+	entry := value.(*entry[B, S])
 
 	key, err := deriveKey(opts, entry.db.Meta())
 	if err != nil {
@@ -144,22 +152,46 @@ func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*D
 		d.databasesMutex.Unlock()
 		return ErrInvalidKey
 	}
-	entry.waitGroup.Add(1)
+	entry.dbMutex.Lock()
+	defer entry.dbMutex.Unlock()
 
 	d.databasesMutex.Unlock()
 
 	if err := fn(entry.db); err != nil {
-		entry.waitGroup.Done()
 		return err
 	}
-	entry.waitGroup.Done()
+
+	return nil
+}
+
+func (d *Deck[B, S, F]) Splice(f F, path string, opts ...SpliceOption) error {
+	d.databasesMutex.Lock()
+	defer d.databasesMutex.Unlock()
+
+	if value, ok := d.databases.Get(path); ok {
+		e := value.(*entry[B, S])
+
+		e.dbMutex.Lock()
+		err := e.db.Close()
+		e.dbMutex.Unlock()
+
+		if err != nil {
+			return err
+		}
+
+		d.databases.Remove(path)
+	}
+
+	if err := SpliceDatabase[B, S, F](f, path, opts...); err != nil {
+		return err
+	}
 
 	return nil
 }
 
 type entry[B tapedb.Base, S tapedb.State] struct {
-	db        *Database[B, S]
-	waitGroup sync.WaitGroup
+	db      *Database[B, S]
+	dbMutex sync.Mutex
 }
 
 func deriveKey(opts []OpenOption, meta Meta) ([]byte, error) {

@@ -34,6 +34,13 @@ type LineWriter[W io.Writer] struct {
 	buffer  bytes.Buffer
 }
 
+func WrapLineWriter(w io.WriteCloser, key []byte, nonceFn NonceFunc) (io.WriteCloser, error) {
+	if w == nil || len(key) == 0 {
+		return w, nil
+	}
+	return NewLineWriter(w, key, nonceFn)
+}
+
 func NewLineWriter[W io.Writer](w W, key []byte, nonceFn NonceFunc) (*LineWriter[W], error) {
 	c, err := aes.NewCipher(key)
 	if err != nil {
@@ -104,6 +111,13 @@ type LineReader[R io.Reader] struct {
 	s      *bufio.Scanner
 	gcm    cipher.AEAD
 	buffer io.Reader
+}
+
+func WrapLineReader(r io.Reader, key []byte) (io.Reader, error) {
+	if r == nil || len(key) == 0 {
+		return r, nil
+	}
+	return NewLineReader(r, key)
 }
 
 func NewLineReader[R io.Reader](r R, key []byte) (*LineReader[R], error) {

@@ -69,23 +69,16 @@ func CreateDatabase[
 
 	meta := options.metaFunc()
 
-	key := []byte(nil)
-	err := error(nil)
-	if options.keyFunc != nil {
-		key, err = options.keyFunc(meta)
-		if err != nil {
-			return nil, fmt.Errorf("derive key: %w", err)
-		}
+	key, err := options.keyFunc.deriveKey(meta)
+	if err != nil {
+		return nil, fmt.Errorf("derive key: %w", err)
 	}
 
 	if len(meta) > 0 {
 		metaPath := filepath.Join(path, FileNameMeta)
-		metaF, err := os.OpenFile(metaPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_SYNC, options.fileMode)
-		if os.IsExist(err) {
-			return nil, fmt.Errorf("create meta %s: %w", metaPath, ErrExisting)
-		}
+		metaF, err := createNewWriteOnlyFile(metaPath, options.fileMode)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create meta %s: %w", metaPath, err)
 		}
 
 		if _, err := meta.WriteTo(metaF); err != nil {
@@ -94,33 +87,28 @@ func CreateDatabase[
 	}
 
 	logPath := filepath.Join(path, FileNameLog)
-	logF, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_SYNC, options.fileMode)
-	if os.IsExist(err) {
-		return nil, fmt.Errorf("create log %s: %w", logPath, ErrExisting)
-	}
+	logF, err := createNewWriteOnlyFile(logPath, options.fileMode)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create log %s: %w", logPath, err)
+	}
+	logWC := io.WriteCloser(logF)
+
+	logWC, err = crypto.WrapLineWriter(logWC, key, NonceFn)
+	if err != nil {
+		return nil, fmt.Errorf("new line writer: %w", err)
 	}
 
-	db := (*tapeio.Database[B, S])(nil)
 	logCloseFn := logF.Close
-	if len(key) == 0 {
-		db, err = tapeio.NewDatabase[B, S, F](f, logF)
-	} else {
-		logWC, err := crypto.NewLineWriter(logF, key, NonceFn)
-		if err != nil {
-			return nil, err
-		}
-
+	if len(key) > 0 {
 		logCloseFn = func() error {
 			if err := logWC.Close(); err != nil {
 				return err
 			}
 			return logF.Close()
 		}
-
-		db, err = tapeio.NewDatabase[B, S, F](f, logWC)
 	}
+
+	db, err := tapeio.NewDatabase[B, S, F](f, logWC)
 	if err != nil {
 		return nil, err
 	}
@@ -192,37 +180,27 @@ func OpenDatabase[
 		logWC = logF
 	}
 
-	key := []byte(nil)
-	if options.keyFunc != nil {
-		key, err = options.keyFunc(meta)
-		if err != nil {
-			return nil, fmt.Errorf("derive key: %w", err)
-		}
+	key, err := options.keyFunc.deriveKey(meta)
+	if err != nil {
+		return nil, fmt.Errorf("derive key: %w", err)
+	}
+
+	baseR, err = crypto.WrapBlockReader(baseR, key)
+	if err != nil {
+		return nil, fmt.Errorf("new block reader: %w", err)
+	}
+
+	logR, err = crypto.WrapLineReader(logR, key)
+	if err != nil {
+		return nil, fmt.Errorf("new line reader: %w", err)
+	}
+
+	logWC, err = crypto.WrapLineWriter(logWC, key, NonceFn)
+	if err != nil {
+		return nil, fmt.Errorf("new line writer: %w", err)
 	}
 
 	if len(key) > 0 {
-		if baseR != nil {
-			br, err := crypto.NewBlockReader(baseR, key)
-			if err != nil {
-				return nil, fmt.Errorf("new block reader: %w", err)
-			}
-			baseR = br
-		}
-
-		if logR != nil {
-			lr, err := crypto.NewLineReader(logR, key)
-			if err != nil {
-				return nil, fmt.Errorf("new line reader: %w", err)
-			}
-			logR = lr
-		}
-
-		lw, err := crypto.NewLineWriter(logWC, key, NonceFn)
-		if err != nil {
-			return nil, fmt.Errorf("new line writer: %w", err)
-		}
-		logWC = lw
-
 		logCloseFn = func() error {
 			if err := logWC.Close(); err != nil {
 				return err
@@ -400,64 +378,48 @@ func SpliceDatabase[
 		logR = logF
 	}
 
-	sourceKey := []byte(nil)
-	if options.sourceKeyFunc != nil {
-		key, err := options.sourceKeyFunc(meta)
-		if err != nil {
-			return fmt.Errorf("derive source key: %w", err)
-		}
-		sourceKey = key
+	sourceKey, err := options.sourceKeyFunc.deriveKey(meta)
+	if err != nil {
+		return fmt.Errorf("derive source key: %w", err)
 	}
 
-	if len(sourceKey) > 0 {
-		br, err := crypto.NewBlockReader(baseR, sourceKey)
-		if err != nil {
-			return fmt.Errorf("new block reader: %w", err)
-		}
-		baseR = br
+	baseR, err = crypto.WrapBlockReader(baseR, sourceKey)
+	if err != nil {
+		return fmt.Errorf("new block reader: %w", err)
+	}
 
-		lr, err := crypto.NewLineReader(logR, sourceKey)
-		if err != nil {
-			return fmt.Errorf("new line reader: %w", err)
-		}
-		logR = lr
+	logR, err = crypto.WrapLineReader(logR, sourceKey)
+	if err != nil {
+		return fmt.Errorf("new line reader: %w", err)
 	}
 
 	newBasePath := filepath.Join(path, FileNameNewBase)
-	newBaseF, err := createWriteOnlyFile(newBasePath, baseFileMode)
+	newBaseF, err := createNewWriteOnlyFile(newBasePath, baseFileMode)
 	if err != nil {
 		return fmt.Errorf("create base %s: %w", newBasePath, ErrExisting)
 	}
 	newBaseWC := io.WriteCloser(newBaseF)
 
 	newLogPath := filepath.Join(path, FileNameNewLog)
-	newLogF, err := createWriteOnlyFile(newLogPath, logFileMode)
+	newLogF, err := createNewWriteOnlyFile(newLogPath, logFileMode)
 	if err != nil {
 		return fmt.Errorf("create log %s: %w", newLogPath, ErrExisting)
 	}
 	newLogWC := io.WriteCloser(newLogF)
 
-	targetKey := []byte(nil)
-	if options.targetKeyFunc != nil {
-		key, err := options.targetKeyFunc(meta)
-		if err != nil {
-			return fmt.Errorf("derive target key: %w", err)
-		}
-		targetKey = key
+	targetKey, err := options.targetKeyFunc.deriveKey(meta)
+	if err != nil {
+		return fmt.Errorf("derive target key: %w", err)
 	}
 
-	if len(targetKey) > 0 {
-		bw, err := crypto.NewBlockWriter(newBaseWC, targetKey, NonceFn)
-		if err != nil {
-			return fmt.Errorf("new block writer: %w", err)
-		}
-		newBaseWC = bw
+	newBaseWC, err = crypto.WrapBlockWriter(newBaseWC, targetKey, NonceFn)
+	if err != nil {
+		return fmt.Errorf("new block writer: %w", err)
+	}
 
-		lw, err := crypto.NewLineWriter(newLogWC, targetKey, NonceFn)
-		if err != nil {
-			return fmt.Errorf("new line writer: %w", err)
-		}
-		newLogWC = lw
+	newLogWC, err = crypto.WrapLineWriter(newLogWC, targetKey, NonceFn)
+	if err != nil {
+		return fmt.Errorf("new line writer: %w", err)
 	}
 
 	payloadIDs := []string{}
@@ -544,31 +506,4 @@ func stringsContain(values []string, value string) bool {
 		}
 	}
 	return false
-}
-
-func mayOpenReadOnlyFile(path string) (*os.File, fs.FileMode, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY, 0)
-	if os.IsNotExist(err) {
-		return nil, 0644, nil
-	}
-	if err != nil {
-		return nil, 0644, err
-	}
-
-	stat, err := f.Stat()
-	if err != nil {
-		return nil, 0644, err
-	}
-	return f, stat.Mode(), nil
-}
-
-func createWriteOnlyFile(path string, mode fs.FileMode) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC, mode)
-	if err != nil {
-		if os.IsExist(err) {
-			return nil, ErrExisting
-		}
-		return nil, err
-	}
-	return f, nil
 }

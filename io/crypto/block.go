@@ -38,6 +38,13 @@ type BlockWriter[W io.Writer] struct {
 	buffer       bytes.Buffer
 }
 
+func WrapBlockWriter(w io.WriteCloser, key []byte, nonceFn NonceFunc) (io.WriteCloser, error) {
+	if w == nil || len(key) == 0 {
+		return w, nil
+	}
+	return NewBlockWriter(w, key, nonceFn)
+}
+
 func NewBlockWriter[W io.Writer](w W, key []byte, nonceFn NonceFunc) (*BlockWriter[W], error) {
 	c, err := aes.NewCipher(key)
 	if err != nil {
@@ -127,6 +134,13 @@ type BlockReader[R io.Reader] struct {
 	nonce     []byte
 	nonceRead bool
 	buffer    io.Reader
+}
+
+func WrapBlockReader(r io.Reader, key []byte) (io.Reader, error) {
+	if r == nil || len(key) == 0 {
+		return r, nil
+	}
+	return NewBlockReader(r, key)
 }
 
 func NewBlockReader[R io.Reader](r R, key []byte) (*BlockReader[R], error) {

@@ -18,6 +18,13 @@ import "io/fs"
 
 type KeyFunc func(Meta) ([]byte, error)
 
+func (kfn KeyFunc) deriveKey(meta Meta) ([]byte, error) {
+	if kfn == nil {
+		return nil, nil
+	}
+	return kfn(meta)
+}
+
 func StaticKeyFunc(value []byte) KeyFunc {
 	return func(_ Meta) ([]byte, error) {
 		return value, nil

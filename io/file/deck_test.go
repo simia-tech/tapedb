@@ -112,4 +112,33 @@ func TestDeck(t *testing.T) {
 		})
 		assert.ErrorIs(t, err, file.ErrInvalidKey)
 	})
+
+	t.Run("Splice", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
+
+		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		require.NoError(t, err)
+		require.NoError(t, db.Close())
+
+		deck, err := file.NewDeck[*test.Base, *test.State, *test.Factory](2)
+		require.NoError(t, err)
+		defer deck.Close()
+
+		testFactory := test.NewFactory()
+
+		require.NoError(t, deck.WithOpen(testFactory, path, []file.OpenOption{file.WithOpenKey(testKey)}, func(db *file.Database[*test.Base, *test.State]) error {
+			return db.Apply(&test.ChangeCounterInc{Value: 21})
+		}))
+
+		require.NoError(t,
+			deck.Splice(testFactory, path, file.WithSourceKey(testKey), file.WithRebaseLogEntries(1)))
+
+		logLen := 0
+		require.NoError(t, deck.WithOpen(testFactory, path, []file.OpenOption{}, func(db *file.Database[*test.Base, *test.State]) error {
+			logLen = db.LogLen()
+			return nil
+		}))
+		assert.Equal(t, 0, logLen)
+	})
 }
