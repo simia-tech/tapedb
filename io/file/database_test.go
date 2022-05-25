@@ -398,7 +398,8 @@ counter-inc {"value":2}
 `)
 
 			require.NoError(t,
-				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithRebaseLogEntries(1)))
+				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](
+					test.NewFactory(), path, file.WithRebaseChangeCount(1)))
 
 			assert.Equal(t, "{\"value\":28}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
 			assert.Equal(t, "counter-inc {\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))

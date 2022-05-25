@@ -14,7 +14,11 @@
 
 package file
 
-import "io/fs"
+import (
+	"io/fs"
+
+	"github.com/simia-tech/tapedb/v2"
+)
 
 type KeyFunc func(Meta) ([]byte, error)
 
@@ -93,13 +97,13 @@ func WithOpenKeyFunc(value KeyFunc) OpenOption {
 }
 
 type spliceOptions struct {
-	sourceKeyFunc    KeyFunc
-	targetKeyFunc    KeyFunc
-	rebaseLogEntries int
+	sourceKeyFunc          KeyFunc
+	targetKeyFunc          KeyFunc
+	rebaseChangeSelectFunc RebaseChangeSelectFunc
 }
 
 var defaultSpliceOptions = spliceOptions{
-	rebaseLogEntries: 0,
+	rebaseChangeSelectFunc: StaticRebaseChangeSelectFunc(false),
 }
 
 type SpliceOption func(*spliceOptions)
@@ -124,8 +128,26 @@ func WithTargetKeyFunc(value KeyFunc) SpliceOption {
 	}
 }
 
-func WithRebaseLogEntries(value int) SpliceOption {
+func WithRebaseChangeCount(value int) SpliceOption {
+	return WithRebaseChangeSelectFunc(CountRebaseChangeSelectFunc(value))
+}
+
+func WithRebaseChangeSelectFunc(value RebaseChangeSelectFunc) SpliceOption {
 	return func(o *spliceOptions) {
-		o.rebaseLogEntries = value
+		o.rebaseChangeSelectFunc = value
+	}
+}
+
+type RebaseChangeSelectFunc func(tapedb.Change, int) (bool, error)
+
+func CountRebaseChangeSelectFunc(count int) RebaseChangeSelectFunc {
+	return func(change tapedb.Change, logIndex int) (bool, error) {
+		return logIndex < count, nil
+	}
+}
+
+func StaticRebaseChangeSelectFunc(value bool) RebaseChangeSelectFunc {
+	return func(_ tapedb.Change, _ int) (bool, error) {
+		return value, nil
 	}
 }

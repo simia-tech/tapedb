@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/simia-tech/tapedb/v2"
 	"github.com/simia-tech/tapedb/v2/io"
 	"github.com/simia-tech/tapedb/v2/test"
 )
@@ -57,5 +58,26 @@ func TestIO(t *testing.T) {
 		require.NoError(t, db.Apply(&test.ChangeCounterInc{Value: 3}))
 
 		assert.Equal(t, "counter-inc {\"value\":3}\n", logBuffer.String())
+	})
+
+	t.Run("SpliceDatabase", func(t *testing.T) {
+		base := "{\"value\":20}\n"
+		log := "counter-inc {\"value\":2}\ncounter-inc {\"value\":1}\n"
+		newBase := bytes.Buffer{}
+		newLog := bytes.Buffer{}
+
+		err := io.SpliceDatabase[*test.Base, *test.State, *test.Factory](
+			test.NewFactory(),
+			&newBase, &newLog,
+			strings.NewReader(base), strings.NewReader(log),
+			func(_ tapedb.Change, logIndex int) (bool, error) {
+				return logIndex < 1, nil
+			}, func(_ any) error {
+				return nil
+			})
+		require.NoError(t, err)
+
+		assert.Equal(t, "{\"value\":22}\n", newBase.String())
+		assert.Equal(t, "counter-inc {\"value\":1}\n", newLog.String())
 	})
 }

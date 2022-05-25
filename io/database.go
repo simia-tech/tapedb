@@ -79,28 +79,18 @@ func OpenDatabase[
 	state := f.NewState(base, stateMutex.RLocker())
 
 	logLen := 0
-	if logR != nil {
-		scanner := bufio.NewScanner(logR)
-		for scanner.Scan() {
-			line := bytes.TrimSpace(scanner.Bytes())
-			if len(line) == 0 {
-				continue
-			}
-
-			change, err := readChange[B, S, F](f, line)
-			if err != nil {
-				return nil, err
-			}
-
-			if err := state.Apply(change); err != nil {
-				return nil, err
-			}
-
-			logLen++
+	err := readLines(logR, func(line []byte) error {
+		change, err := readChange[B, S, F](f, line)
+		if err != nil {
+			return err
 		}
-		if scanner.Err() != nil {
-			return nil, scanner.Err()
-		}
+
+		logLen++
+
+		return state.Apply(change)
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &Database[B, S]{
@@ -196,7 +186,7 @@ func SpliceDatabase[
 	f F,
 	baseW, logW io.Writer,
 	baseR, logR io.Reader,
-	rebaseLogEntries int,
+	rebaseChangeSelectFn func(tapedb.Change, int) (bool, error),
 	baseOrChangeWrittenFn func(any) error,
 ) error {
 	base := f.NewBase()
@@ -207,46 +197,54 @@ func SpliceDatabase[
 	}
 
 	logIndex := 0
+	rebase := true
 	baseWritten := false
 
-	if logR != nil {
-		scanner := bufio.NewScanner(logR)
-		for scanner.Scan() {
-			line := bytes.TrimSpace(scanner.Bytes())
-			if len(line) == 0 {
-				continue
-			}
+	err := readLines(logR, func(line []byte) error {
+		change, err := readChange[B, S, F](f, line)
+		if err != nil {
+			return err
+		}
 
-			change, err := readChange[B, S, F](f, line)
+		switch {
+		case rebase:
+			rebase, err = rebaseChangeSelectFn(change, logIndex)
 			if err != nil {
 				return err
 			}
 
-			switch {
-			case logIndex < rebaseLogEntries:
+			if rebase {
 				if err := base.Apply(change); err != nil {
 					return fmt.Errorf("apply change to base: %w", err)
 				}
-			case !baseWritten:
-				if _, err := base.WriteTo(baseW); err != nil {
-					return fmt.Errorf("write base: %w", err)
-				}
-				if err := baseOrChangeWrittenFn(base); err != nil {
-					return err
-				}
-				baseWritten = true
-
-				fallthrough
-			default:
-				if _, err := writeChange(logW, change); err != nil {
-					return fmt.Errorf("write change: %w", err)
-				}
-				if err := baseOrChangeWrittenFn(change); err != nil {
-					return err
-				}
+				break
 			}
-			logIndex++
+
+			fallthrough
+		case !baseWritten:
+			if _, err := base.WriteTo(baseW); err != nil {
+				return fmt.Errorf("write base: %w", err)
+			}
+			if err := baseOrChangeWrittenFn(base); err != nil {
+				return err
+			}
+			baseWritten = true
+
+			fallthrough
+		default:
+			if _, err := writeChange(logW, change); err != nil {
+				return fmt.Errorf("write change: %w", err)
+			}
+			if err := baseOrChangeWrittenFn(change); err != nil {
+				return err
+			}
 		}
+		logIndex++
+
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	if !baseWritten {
@@ -256,6 +254,30 @@ func SpliceDatabase[
 		if err := baseOrChangeWrittenFn(base); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func readLines(r io.Reader, fn func([]byte) error) error {
+	if r == nil {
+		return nil
+	}
+
+	lineNumber := 0
+	scanner := bufio.NewScanner(r)
+	for ; scanner.Scan(); lineNumber++ {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+
+		if err := fn(line); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("line %d: %w", lineNumber, err)
 	}
 
 	return nil

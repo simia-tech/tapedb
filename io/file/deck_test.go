@@ -132,7 +132,7 @@ func TestDeck(t *testing.T) {
 		}))
 
 		require.NoError(t,
-			deck.Splice(testFactory, path, file.WithSourceKey(testKey), file.WithRebaseLogEntries(1)))
+			deck.Splice(testFactory, path, file.WithSourceKey(testKey), file.WithRebaseChangeCount(1)))
 
 		logLen := 0
 		require.NoError(t, deck.WithOpen(testFactory, path, []file.OpenOption{}, func(db *file.Database[*test.Base, *test.State]) error {

@@ -430,7 +430,12 @@ func SpliceDatabase[
 		return nil
 	}
 
-	if err := tapeio.SpliceDatabase[B, S, F](f, newBaseWC, newLogWC, baseR, logR, options.rebaseLogEntries, baseOrChangeWrittenFn); err != nil {
+	err = tapeio.SpliceDatabase[B, S, F](
+		f,
+		newBaseWC, newLogWC,
+		baseR, logR,
+		options.rebaseChangeSelectFunc, baseOrChangeWrittenFn)
+	if err != nil {
 		return err
 	}
 
