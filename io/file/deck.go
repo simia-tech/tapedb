@@ -114,7 +114,7 @@ func (d *Deck[B, S, F]) Delete(path string) error {
 	return nil
 }
 
-func (d *Deck[B, S, F]) ReadMeta(path string) (Meta, error) {
+func (d *Deck[B, S, F]) Meta(path string) (Meta, error) {
 	d.databasesMutex.RLock()
 
 	if value, ok := d.databases.Get(path); ok {
@@ -126,6 +126,20 @@ func (d *Deck[B, S, F]) ReadMeta(path string) (Meta, error) {
 	d.databasesMutex.RUnlock()
 
 	return ReadMetaFile(filepath.Join(path, FileNameMeta))
+}
+
+func (d *Deck[B, S, F]) LogLen(path string) (int, error) {
+	d.databasesMutex.RLock()
+
+	if value, ok := d.databases.Get(path); ok {
+		logLen := value.(*entry[B, S]).db.LogLen()
+		d.databasesMutex.RUnlock()
+		return logLen, nil
+	}
+
+	d.databasesMutex.RUnlock()
+
+	return ReadLogLen(filepath.Join(path, FileNameLog))
 }
 
 func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*Database[B, S]) error) error {

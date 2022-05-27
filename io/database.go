@@ -259,6 +259,18 @@ func SpliceDatabase[
 	return nil
 }
 
+func ReadLogLen(r io.Reader) (int, error) {
+	logIndex := 0
+	err := readLines(r, func(_ []byte) error {
+		logIndex++
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return logIndex, nil
+}
+
 func readLines(r io.Reader, fn func([]byte) error) error {
 	if r == nil {
 		return nil

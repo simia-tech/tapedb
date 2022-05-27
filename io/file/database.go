@@ -480,6 +480,19 @@ func SpliceDatabase[
 	return nil
 }
 
+func ReadLogLen(path string) (int, error) {
+	f, _, err := mayOpenReadOnlyFile(path)
+	if err != nil {
+		return 0, err
+	}
+	if f == nil {
+		return 0, nil
+	}
+	defer f.Close()
+
+	return tapeio.ReadLogLen(f)
+}
+
 func deleteUnreferencedPayloads(path string, ids []string) error {
 	entries, err := os.ReadDir(path)
 	if err != nil {

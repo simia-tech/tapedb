@@ -65,7 +65,23 @@ func TestDeck(t *testing.T) {
 		assert.Equal(t, 0, deck.Len())
 	})
 
-	t.Run("ReadMeta", func(t *testing.T) {
+	t.Run("Meta", func(t *testing.T) {
+		path, removeDir := makeTempDir(t)
+		defer removeDir()
+
+		deck, err := file.NewDeck[*test.Base, *test.State, *test.Factory](2)
+		require.NoError(t, err)
+		defer deck.Close()
+
+		require.NoError(t, deck.Create(test.NewFactory(), path, file.WithMeta(file.Meta{"Test": []string{"Value"}})))
+		assert.Equal(t, 1, deck.Len())
+
+		meta, err := deck.Meta(path)
+		require.NoError(t, err)
+		assert.Equal(t, file.Meta{"Test": []string{"Value"}}, meta)
+	})
+
+	t.Run("LogLen", func(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
@@ -76,11 +92,13 @@ func TestDeck(t *testing.T) {
 		testFactory := test.NewFactory()
 
 		require.NoError(t, deck.Create(testFactory, path, file.WithMeta(file.Meta{"Test": []string{"Value"}})))
-		assert.Equal(t, 1, deck.Len())
+		require.NoError(t, deck.WithOpen(testFactory, path, []file.OpenOption{}, func(db *file.Database[*test.Base, *test.State]) error {
+			return db.Apply(&test.ChangeCounterInc{Value: 12})
+		}))
 
-		meta, err := deck.ReadMeta(path)
+		logLen, err := deck.LogLen(path)
 		require.NoError(t, err)
-		assert.Equal(t, file.Meta{"Test": []string{"Value"}}, meta)
+		assert.Equal(t, 1, logLen)
 	})
 
 	t.Run("WithOpen", func(t *testing.T) {
