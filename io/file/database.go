@@ -23,7 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/simia-tech/tapedb/v2"
+	tapedb "github.com/simia-tech/tapedb/v2"
 	tapeio "github.com/simia-tech/tapedb/v2/io"
 	"github.com/simia-tech/tapedb/v2/io/crypto"
 )
@@ -91,24 +91,16 @@ func CreateDatabase[
 	if err != nil {
 		return nil, fmt.Errorf("create log %s: %w", logPath, err)
 	}
-	logWC := io.WriteCloser(logF)
+	logW := tapeio.LogWriter(tapeio.NewLogWriter(logF))
 
-	logWC, err = crypto.WrapLineWriter(logWC, key, NonceFn)
+	logW, err = crypto.WrapLogWriter(logW, key, NonceFn)
 	if err != nil {
-		return nil, fmt.Errorf("new line writer: %w", err)
+		return nil, fmt.Errorf("new log writer: %w", err)
 	}
 
 	logCloseFn := logF.Close
-	if len(key) > 0 {
-		logCloseFn = func() error {
-			if err := logWC.Close(); err != nil {
-				return err
-			}
-			return logF.Close()
-		}
-	}
 
-	db, err := tapeio.NewDatabase[B, S, F](f, logWC)
+	db, err := tapeio.NewDatabase[B, S, F](f, logW)
 	if err != nil {
 		return nil, err
 	}
@@ -172,13 +164,13 @@ func OpenDatabase[
 	if stat, err := logF.Stat(); err == nil {
 		fileMode = stat.Mode()
 	}
-	logCloseFn := logF.Close
-	logR := io.Reader(nil)
-	logWC := io.WriteCloser(nil)
+	logR := tapeio.LogReader(nil)
+	logW := tapeio.LogWriter(nil)
 	if logF != nil {
-		logR = logF
-		logWC = logF
+		logR = tapeio.NewLogReader(logF)
+		logW = tapeio.NewLogWriter(logF)
 	}
+	logCloseFn := logF.Close
 
 	key, err := options.keyFunc.deriveKey(meta)
 	if err != nil {
@@ -190,26 +182,17 @@ func OpenDatabase[
 		return nil, fmt.Errorf("new block reader: %w", err)
 	}
 
-	logR, err = crypto.WrapLineReader(logR, key)
+	logR, err = crypto.WrapLogReader(logR, key)
 	if err != nil {
-		return nil, fmt.Errorf("new line reader: %w", err)
+		return nil, fmt.Errorf("new log reader: %w", err)
 	}
 
-	logWC, err = crypto.WrapLineWriter(logWC, key, NonceFn)
+	logW, err = crypto.WrapLogWriter(logW, key, NonceFn)
 	if err != nil {
 		return nil, fmt.Errorf("new line writer: %w", err)
 	}
 
-	if len(key) > 0 {
-		logCloseFn = func() error {
-			if err := logWC.Close(); err != nil {
-				return err
-			}
-			return logF.Close()
-		}
-	}
-
-	db, err := tapeio.OpenDatabase[B, S, F](f, baseR, logR, logWC)
+	db, err := tapeio.OpenDatabase[B, S, F](f, baseR, logR, logW)
 	if err != nil {
 		if errors.Is(err, crypto.ErrInvalidKey) {
 			return nil, ErrInvalidKey
@@ -373,9 +356,9 @@ func SpliceDatabase[
 	if err != nil {
 		return err
 	}
-	logR := io.Reader(nil)
+	logR := tapeio.LogReader(nil)
 	if logF != nil {
-		logR = logF
+		logR = tapeio.NewLogReader(logF)
 	}
 
 	sourceKey, err := options.sourceKeyFunc.deriveKey(meta)
@@ -388,9 +371,9 @@ func SpliceDatabase[
 		return fmt.Errorf("new block reader: %w", err)
 	}
 
-	logR, err = crypto.WrapLineReader(logR, sourceKey)
+	logR, err = crypto.WrapLogReader(logR, sourceKey)
 	if err != nil {
-		return fmt.Errorf("new line reader: %w", err)
+		return fmt.Errorf("new log reader: %w", err)
 	}
 
 	newBasePath := filepath.Join(path, FileNameNewBase)
@@ -405,7 +388,7 @@ func SpliceDatabase[
 	if err != nil {
 		return fmt.Errorf("create log %s: %w", newLogPath, ErrExisting)
 	}
-	newLogWC := io.WriteCloser(newLogF)
+	newLogW := tapeio.LogWriter(tapeio.NewLogWriter(newLogF))
 
 	targetKey, err := options.targetKeyFunc.deriveKey(meta)
 	if err != nil {
@@ -417,9 +400,9 @@ func SpliceDatabase[
 		return fmt.Errorf("new block writer: %w", err)
 	}
 
-	newLogWC, err = crypto.WrapLineWriter(newLogWC, targetKey, NonceFn)
+	newLogW, err = crypto.WrapLogWriter(newLogW, targetKey, NonceFn)
 	if err != nil {
-		return fmt.Errorf("new line writer: %w", err)
+		return fmt.Errorf("new log writer: %w", err)
 	}
 
 	payloadIDs := []string{}
@@ -432,7 +415,7 @@ func SpliceDatabase[
 
 	err = tapeio.SpliceDatabase[B, S, F](
 		f,
-		newBaseWC, newLogWC,
+		newBaseWC, newLogW,
 		baseR, logR,
 		options.rebaseChangeSelectFunc, baseOrChangeWrittenFn)
 	if err != nil {
@@ -453,9 +436,6 @@ func SpliceDatabase[
 		if err := logF.Close(); err != nil {
 			return err
 		}
-	}
-	if err := newLogWC.Close(); err != nil {
-		return err
 	}
 	newLogF.Close() // ignore the error since the file might be already closed
 
@@ -490,7 +470,7 @@ func ReadLogLen(path string) (int, error) {
 	}
 	defer f.Close()
 
-	return tapeio.ReadLogLen(f)
+	return tapeio.ReadLogLen(tapeio.NewLogReader(f))
 }
 
 func deleteUnreferencedPayloads(path string, ids []string) error {

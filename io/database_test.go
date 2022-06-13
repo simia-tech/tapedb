@@ -29,7 +29,7 @@ import (
 
 func TestIO(t *testing.T) {
 	t.Run("NewDatabase", func(t *testing.T) {
-		logBuffer := bytes.Buffer{}
+		logBuffer := io.LogBuffer{}
 
 		db, err := io.NewDatabase[*test.Base, *test.State](
 			test.NewFactory(),
@@ -38,18 +38,18 @@ func TestIO(t *testing.T) {
 
 		require.NoError(t, db.Apply(&test.ChangeCounterInc{Value: 1}))
 
-		assert.Equal(t, "counter-inc {\"value\":1}\n", logBuffer.String())
+		assert.Equal(t, "\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n", logBuffer.String())
 	})
 
 	t.Run("OpenDatabase", func(t *testing.T) {
 		base := "{\"value\":20}\n"
-		log := "counter-inc {\"value\":2}\ncounter-inc {\"value\":1}\n"
-		logBuffer := bytes.Buffer{}
+		log := io.NewLogBufferString("\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n")
+		logBuffer := io.LogBuffer{}
 
 		db, err := io.OpenDatabase[*test.Base, *test.State](
 			test.NewFactory(),
 			strings.NewReader(base),
-			strings.NewReader(log),
+			log,
 			&logBuffer)
 		require.NoError(t, err)
 
@@ -57,19 +57,19 @@ func TestIO(t *testing.T) {
 
 		require.NoError(t, db.Apply(&test.ChangeCounterInc{Value: 3}))
 
-		assert.Equal(t, "counter-inc {\"value\":3}\n", logBuffer.String())
+		assert.Equal(t, "\x00\x00\x00\x18\x0bcounter-inc{\"value\":3}\n", logBuffer.String())
 	})
 
 	t.Run("SpliceDatabase", func(t *testing.T) {
 		base := "{\"value\":20}\n"
-		log := "counter-inc {\"value\":2}\ncounter-inc {\"value\":1}\n"
+		log := io.NewLogBufferString("\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n")
 		newBase := bytes.Buffer{}
-		newLog := bytes.Buffer{}
+		newLog := io.LogBuffer{}
 
 		err := io.SpliceDatabase[*test.Base, *test.State, *test.Factory](
 			test.NewFactory(),
 			&newBase, &newLog,
-			strings.NewReader(base), strings.NewReader(log),
+			strings.NewReader(base), log,
 			func(_ tapedb.Change, logIndex int) (bool, error) {
 				return logIndex < 1, nil
 			}, func(_ any) error {
@@ -78,6 +78,6 @@ func TestIO(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "{\"value\":22}\n", newBase.String())
-		assert.Equal(t, "counter-inc {\"value\":1}\n", newLog.String())
+		assert.Equal(t, "\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n", newLog.String())
 	})
 }

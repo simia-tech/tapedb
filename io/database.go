@@ -15,24 +15,18 @@
 package io
 
 import (
-	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
 
-	"github.com/simia-tech/tapedb/v2"
-)
-
-var (
-	ErrMalformedLog = errors.New("malformed log")
+	tapedb "github.com/simia-tech/tapedb/v2"
 )
 
 type Database[B tapedb.Base, S tapedb.State] struct {
 	base       B
 	state      S
-	logW       io.Writer
+	logW       LogWriter
 	logLen     int
 	stateMutex *sync.RWMutex
 }
@@ -43,7 +37,7 @@ func NewDatabase[
 	F tapedb.Factory[B, S],
 ](
 	f F,
-	logW io.Writer,
+	logW LogWriter,
 ) (*Database[B, S], error) {
 	base := f.NewBase()
 
@@ -64,8 +58,9 @@ func OpenDatabase[
 	F tapedb.Factory[B, S],
 ](
 	f F,
-	baseR, logR io.Reader,
-	logW io.Writer,
+	baseR io.Reader,
+	logR LogReader,
+	logW LogWriter,
 ) (*Database[B, S], error) {
 	base := f.NewBase()
 
@@ -79,10 +74,15 @@ func OpenDatabase[
 	state := f.NewState(base, stateMutex.RLocker())
 
 	logLen := 0
-	err := readLines(logR, func(line []byte) error {
-		change, err := readChange[B, S, F](f, line)
+	err := readLogEntries(logR, func(entry LogEntry) error {
+		r, err := entry.Reader()
 		if err != nil {
-			return err
+			return fmt.Errorf("reader: %w", err)
+		}
+
+		change, err := readChange[B, S, F](f, r)
+		if err != nil {
+			return fmt.Errorf("read change: %w", err)
 		}
 
 		logLen++
@@ -90,7 +90,7 @@ func OpenDatabase[
 		return state.Apply(change)
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read log entries: %w", err)
 	}
 
 	return &Database[B, S]{
@@ -135,22 +135,18 @@ func (db *Database[B, S]) LogLen() int {
 	return db.logLen
 }
 
-func writeChange[W io.Writer](w W, c tapedb.Change) (int64, error) {
-	total := int64(0)
+func writeChange[W LogWriter](w W, c tapedb.Change) (int64, error) {
+	typeName := c.TypeName()
 
-	n, err := fmt.Fprint(w, c.TypeName(), " ")
-	if err != nil {
-		return total, err
+	buffer := bytes.Buffer{}
+	buffer.WriteByte(byte(len(typeName)))
+	buffer.WriteString(typeName)
+
+	if _, err := c.WriteTo(&buffer); err != nil {
+		return 0, err
 	}
-	total += int64(n)
 
-	n64, err := c.WriteTo(w)
-	if err != nil {
-		return total, err
-	}
-	total += n64
-
-	return total, nil
+	return w.WriteEntry(LogEntryTypeBinary, buffer.Bytes())
 }
 
 func readChange[
@@ -159,19 +155,26 @@ func readChange[
 	F tapedb.Factory[B, S],
 ](
 	f F,
-	line []byte,
+	r io.Reader,
 ) (tapedb.Change, error) {
-	parts := bytes.SplitN(line, []byte(" "), 2)
-	if len(parts) != 2 {
-		return nil, ErrMalformedLog
+	sizeBytes := [1]byte{}
+	if _, err := io.ReadFull(r, sizeBytes[:]); err != nil {
+		return nil, fmt.Errorf("read type name size: %w", err)
 	}
+	size := sizeBytes[0]
 
-	change, err := f.NewChange(string(parts[0]))
+	typeNameBytes := make([]byte, size)
+	if _, err := io.ReadFull(r, typeNameBytes); err != nil {
+		return nil, fmt.Errorf("read type name of size %d: %w", size, err)
+	}
+	typeName := string(typeNameBytes)
+
+	change, err := f.NewChange(typeName)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := change.ReadFrom(bytes.NewReader(parts[1])); err != nil {
+	if _, err := change.ReadFrom(r); err != nil {
 		return nil, err
 	}
 
@@ -184,8 +187,10 @@ func SpliceDatabase[
 	F tapedb.Factory[B, S],
 ](
 	f F,
-	baseW, logW io.Writer,
-	baseR, logR io.Reader,
+	baseW io.Writer,
+	logW LogWriter,
+	baseR io.Reader,
+	logR LogReader,
 	rebaseChangeSelectFn func(tapedb.Change, int) (bool, error),
 	baseOrChangeWrittenFn func(any) error,
 ) error {
@@ -200,8 +205,13 @@ func SpliceDatabase[
 	rebase := true
 	baseWritten := false
 
-	err := readLines(logR, func(line []byte) error {
-		change, err := readChange[B, S, F](f, line)
+	err := readLogEntries(logR, func(entry LogEntry) error {
+		r, err := entry.Reader()
+		if err != nil {
+			return err
+		}
+
+		change, err := readChange[B, S, F](f, r)
 		if err != nil {
 			return err
 		}
@@ -244,7 +254,7 @@ func SpliceDatabase[
 		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("read log entries: %w", err)
 	}
 
 	if !baseWritten {
@@ -254,42 +264,6 @@ func SpliceDatabase[
 		if err := baseOrChangeWrittenFn(base); err != nil {
 			return err
 		}
-	}
-
-	return nil
-}
-
-func ReadLogLen(r io.Reader) (int, error) {
-	logIndex := 0
-	err := readLines(r, func(_ []byte) error {
-		logIndex++
-		return nil
-	})
-	if err != nil {
-		return 0, err
-	}
-	return logIndex, nil
-}
-
-func readLines(r io.Reader, fn func([]byte) error) error {
-	if r == nil {
-		return nil
-	}
-
-	lineNumber := 0
-	scanner := bufio.NewScanner(r)
-	for ; scanner.Scan(); lineNumber++ {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-
-		if err := fn(line); err != nil {
-			return err
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("line %d: %w", lineNumber, err)
 	}
 
 	return nil

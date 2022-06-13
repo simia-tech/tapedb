@@ -43,14 +43,14 @@ func makeTempDir(tb testing.TB) (string, func()) {
 	}
 }
 
-func makeFile(tb testing.TB, path, content string) {
-	require.NoError(tb, ioutil.WriteFile(path, []byte(content), 0600))
-}
-
 func makeFileBase64(tb testing.TB, path, encodedContent string) {
 	content, err := base64.RawStdEncoding.DecodeString(encodedContent)
 	require.NoError(tb, err)
-	require.NoError(tb, ioutil.WriteFile(path, content, 0600))
+	makeFile(tb, path, string(content))
+}
+
+func makeFile(tb testing.TB, path, content string) {
+	require.NoError(tb, ioutil.WriteFile(path, []byte(content), 0600))
 }
 
 func readFile(tb testing.TB, path string) string {

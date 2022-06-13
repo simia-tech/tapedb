@@ -95,10 +95,8 @@ func TestOpenDatabase(t *testing.T) {
 		defer removeDir()
 
 		makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":3}`)
-		makeFile(t, filepath.Join(path, file.FileNameLog), `
-counter-inc {"value":1}
-counter-inc {"value":2}
-`)
+		makeFile(t, filepath.Join(path, file.FileNameLog),
+			"\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n")
 
 		db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
 		require.NoError(t, err)
@@ -112,9 +110,8 @@ counter-inc {"value":2}
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		makeFile(t, filepath.Join(path, file.FileNameLog), `
-RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg
-`)
+		makeFileBase64(t, filepath.Join(path, file.FileNameLog),
+			"EAAANQAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDljzRVpqg0Xg5O3gChdsGaHUeOdn")
 
 		_, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testInvalidKey))
 		assert.ErrorIs(t, err, file.ErrInvalidKey)
@@ -134,10 +131,8 @@ func TestDatabaseApply(t *testing.T) {
 			path, removeDir := makeTempDir(t)
 			defer removeDir()
 
-			makeFile(t, filepath.Join(path, file.FileNameBase), `{}`)
-			makeFile(t, filepath.Join(path, file.FileNameLog), `
-counter-inc {"value":1}
-`)
+			makeFile(t, filepath.Join(path, file.FileNameBase), "{}")
+			makeFile(t, filepath.Join(path, file.FileNameLog), "\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n")
 
 			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
 			require.NoError(t, err)
@@ -147,10 +142,7 @@ counter-inc {"value":1}
 				db.Apply(&test.ChangeCounterInc{Value: 21}))
 
 			assert.Equal(t, 2, db.LogLen())
-			assert.Equal(t, `
-counter-inc {"value":1}
-counter-inc {"value":21}
-`,
+			assert.Equal(t, "\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n\x00\x00\x00\x19\x0bcounter-inc{\"value\":21}\n",
 				readFile(t, filepath.Join(path, file.FileNameLog)))
 		})
 
@@ -158,10 +150,8 @@ counter-inc {"value":21}
 			path, removeDir := makeTempDir(t)
 			defer removeDir()
 
-			makeFile(t, filepath.Join(path, file.FileNameBase), `{}`)
-			makeFile(t, filepath.Join(path, file.FileNameLog), `
-counter-inc {"value":1}
-`)
+			makeFile(t, filepath.Join(path, file.FileNameBase), "{}")
+			makeFile(t, filepath.Join(path, file.FileNameLog), "\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n")
 
 			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
 			require.NoError(t, err)
@@ -172,10 +162,8 @@ counter-inc {"value":1}
 					&test.ChangeAttachPayload{PayloadID: "123"},
 					file.NewPayload("123", strings.NewReader("test content"))))
 
-			assert.Equal(t, `
-counter-inc {"value":1}
-attach-payload {"payloadID":"123"}
-`,
+			assert.Equal(t,
+				"\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n\x00\x00\x00#\x0eattach-payload{\"payloadID\":\"123\"}\n",
 				readFile(t, filepath.Join(path, file.FileNameLog)))
 			assert.Equal(t, "test content", readFile(t, filepath.Join(path, "payload-123")))
 		})
@@ -199,8 +187,12 @@ attach-payload {"payloadID":"123"}
 					file.NewPayload("123", strings.NewReader("test content 2"))),
 				file.ErrPayloadIDAlreadyExists)
 
-			assert.Equal(t, "attach-payload {\"payloadID\":\"123\"}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
-			assert.Equal(t, "test content", readFile(t, filepath.Join(path, file.FilePrefixPayload+"123")))
+			assert.Equal(t,
+				"\x00\x00\x00#\x0eattach-payload{\"payloadID\":\"123\"}\n",
+				readFile(t, filepath.Join(path, file.FileNameLog)))
+			assert.Equal(t,
+				"test content",
+				readFile(t, filepath.Join(path, file.FilePrefixPayload+"123")))
 		})
 	})
 
@@ -211,28 +203,27 @@ attach-payload {"payloadID":"123"}
 			path, removeDir := makeTempDir(t)
 			defer removeDir()
 
-			makeFile(t, filepath.Join(path, file.FileNameLog),
-				"RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg\n")
+			makeFileBase64(t, filepath.Join(path, file.FileNameLog),
+				"EAAANQAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDljzRVpqg0Xg5O3gChdsGaHUeOdn")
 
 			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testKey))
 			require.NoError(t, err)
 			defer db.Close()
 
-			require.NoError(t, db.Apply(&test.ChangeCounterInc{Value: 123}))
+			require.NoError(t, db.Apply(&test.ChangeCounterInc{Value: 2}))
 
 			assert.Equal(t, 2, db.LogLen())
-			assert.Equal(t, `RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg
-AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOW/ALLba+QxD4jkcJYOo99rU7+DA
-`,
-				readFile(t, filepath.Join(path, file.FileNameLog)))
+			assert.Equal(t,
+				"EAAANQAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDljzRVpqg0Xg5O3gChdsGaHUeOdnEAAANAAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDli/MpzG8dh/UYqsEnrWaFYZLyk",
+				readFileBase64(t, filepath.Join(path, file.FileNameLog)))
 		})
 
 		t.Run("WithPayload", func(t *testing.T) {
 			path, removeDir := makeTempDir(t)
 			defer removeDir()
 
-			makeFile(t, filepath.Join(path, file.FileNameLog),
-				"RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg\n")
+			makeFileBase64(t, filepath.Join(path, file.FileNameLog),
+				"EAAANQAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDljzRVpqg0Xg5O3gChdsGaHUeOdn")
 
 			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testKey))
 			require.NoError(t, err)
@@ -244,10 +235,9 @@ AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOW/ALLba+QxD4jkcJYOo99rU7+DA
 					file.NewPayload("123", bytes.NewReader([]byte("test content")))))
 
 			assert.Equal(t, 2, db.LogLen())
-			assert.Equal(t, `RvHVkTLxL6w2NuIve4yZWuDoi235HjF4lypGHH9GbQWcgp9fh0yCTqCkya8bwp0HQQyAPg
-AAAAAAAAAAAAAAAAKKLzMvrzi/yC8BYHAeWQ5pvdSldYBaNcGRkUZL6GzmUSHoM0+S5nqVoaLW8WgkdwqwI
-`,
-				readFile(t, filepath.Join(path, file.FileNameLog)))
+			assert.Equal(t,
+				"EAAANQAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDljzRVpqg0Xg5O3gChdsGaHUeOdnEAAAPwAAAAAAAAAAAAAAAEe38yf4+M6hk+gDBA/g1Oab3UpXWAWjXBkZFGS+hs5lEh68QYx4FT0OqHeetgD1F83q6Q",
+				readFileBase64(t, filepath.Join(path, file.FileNameLog)))
 
 			assert.Equal(t,
 				"AAAAAAAAAAAAAAAAHAA9s/QnufjJ4pfsFBxwlSca1DfNTgp6gIijaFQK",
@@ -362,13 +352,13 @@ func TestDatabaseSplice(t *testing.T) {
 			defer removeDir()
 
 			makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":21}`)
-			makeFile(t, filepath.Join(path, file.FileNameLog), `counter-inc {"value":2}`)
+			makeFile(t, filepath.Join(path, file.FileNameLog), "\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n")
 
 			require.NoError(t,
 				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path))
 
 			assert.Equal(t, "{\"value\":21}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
-			assert.Equal(t, "counter-inc {\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+			assert.Equal(t, "\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
 		})
 
 		t.Run("WithPayloads", func(t *testing.T) {
@@ -376,7 +366,7 @@ func TestDatabaseSplice(t *testing.T) {
 			defer removeDir()
 
 			makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":21}`)
-			makeFile(t, filepath.Join(path, file.FileNameLog), `attach-payload {"payloadID":"456"}`)
+			makeFile(t, filepath.Join(path, file.FileNameLog), "\x00\x00\x00#\x0eattach-payload{\"payloadID\":\"456\"}\n")
 			makeFile(t, filepath.Join(path, file.FilePrefixPayload+"123"), "test content")
 			makeFile(t, filepath.Join(path, file.FilePrefixPayload+"456"), "test content")
 
@@ -392,17 +382,17 @@ func TestDatabaseSplice(t *testing.T) {
 			defer removeDir()
 
 			makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":21}`)
-			makeFile(t, filepath.Join(path, file.FileNameLog), `
-counter-inc {"value":7}
-counter-inc {"value":2}
-`)
+			makeFile(t, filepath.Join(path, file.FileNameLog),
+				"\x00\x00\x00\x18\x0bcounter-inc{\"value\":7}\n\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n")
 
 			require.NoError(t,
 				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](
 					test.NewFactory(), path, file.WithRebaseChangeCount(1)))
 
 			assert.Equal(t, "{\"value\":28}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
-			assert.Equal(t, "counter-inc {\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+			assert.Equal(t,
+				"\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n",
+				readFile(t, filepath.Join(path, file.FileNameLog)))
 		})
 	})
 
@@ -416,7 +406,9 @@ counter-inc {"value":2}
 			require.NoError(t,
 				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithTargetKey(testKey)))
 
-			assert.Equal(t, "AAAAAAAAAAAAAAAAHAAy9PEy9e7Drtm5B2Ih+wBioy9nEqoVlbSJnZT3", readFileBase64(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t,
+				"AAAAAAAAAAAAAAAAHAAy9PEy9e7Drtm5B2Ih+wBioy9nEqoVlbSJnZT3",
+				readFileBase64(t, filepath.Join(path, file.FileNameBase)))
 			assert.Equal(t, "", readFile(t, filepath.Join(path, file.FileNameLog)))
 		})
 
@@ -425,13 +417,17 @@ counter-inc {"value":2}
 			defer removeDir()
 
 			makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":21}`)
-			makeFile(t, filepath.Join(path, file.FileNameLog), `counter-inc {"value":2}`)
+			makeFile(t, filepath.Join(path, file.FileNameLog), "\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n")
 
 			require.NoError(t,
 				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithTargetKey(testKey)))
 
-			assert.Equal(t, "AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ", readFileBase64(t, filepath.Join(path, file.FileNameBase)))
-			assert.Equal(t, "AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOWL8QRCFTMvPMceWUFI6Ztdce\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+			assert.Equal(t,
+				"AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ",
+				readFileBase64(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t,
+				"EAAANAAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDli/MpzG8dh/UYqsEnrWaFYZLyk",
+				readFileBase64(t, filepath.Join(path, file.FileNameLog)))
 		})
 	})
 
@@ -442,14 +438,16 @@ counter-inc {"value":2}
 			path, removeDir := makeTempDir(t)
 			defer removeDir()
 
-			makeFileBase64(t, filepath.Join(path, file.FileNameBase), "AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ")
-			makeFile(t, filepath.Join(path, file.FileNameLog), "AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOWL8QRCFTMvPMceWUFI6Ztdce\n")
+			makeFileBase64(t, filepath.Join(path, file.FileNameBase),
+				"AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ")
+			makeFileBase64(t, filepath.Join(path, file.FileNameLog),
+				"EAAANAAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDli/MpzG8dh/UYqsEnrWaFYZLyk")
 
 			require.NoError(t,
 				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithSourceKey(testKey)))
 
 			assert.Equal(t, "{\"value\":21}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
-			assert.Equal(t, "counter-inc {\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+			assert.Equal(t, "\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
 		})
 	})
 
@@ -460,8 +458,10 @@ counter-inc {"value":2}
 			path, removeDir := makeTempDir(t)
 			defer removeDir()
 
-			makeFileBase64(t, filepath.Join(path, file.FileNameBase), "AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ")
-			makeFile(t, filepath.Join(path, file.FileNameLog), "AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOWL8QRCFTMvPMceWUFI6Ztdce\n")
+			makeFileBase64(t, filepath.Join(path, file.FileNameBase),
+				"AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ")
+			makeFileBase64(t, filepath.Join(path, file.FileNameLog),
+				"EAAANAAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDli/MpzG8dh/UYqsEnrWaFYZLyk")
 
 			require.NoError(t,
 				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](
@@ -469,8 +469,12 @@ counter-inc {"value":2}
 					path,
 					file.WithSourceKey(testKey), file.WithTargetKey(testKey)))
 
-			assert.Equal(t, "AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ", readFileBase64(t, filepath.Join(path, file.FileNameBase)))
-			assert.Equal(t, "AAAAAAAAAAAAAAAAKrnyPe3+1KGK5xlIG6PG/NXYTgwOWL8QRCFTMvPMceWUFI6Ztdce\n", readFile(t, filepath.Join(path, file.FileNameLog)))
+			assert.Equal(t,
+				"AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ",
+				readFileBase64(t, filepath.Join(path, file.FileNameBase)))
+			assert.Equal(t,
+				"EAAANAAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDli/MpzG8dh/UYqsEnrWaFYZLyk",
+				readFileBase64(t, filepath.Join(path, file.FileNameLog)))
 		})
 	})
 }
