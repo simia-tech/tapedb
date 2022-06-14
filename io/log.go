@@ -15,6 +15,7 @@
 package io
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -106,13 +107,13 @@ type LogWriter interface {
 }
 
 type logWriter[W io.Writer] struct {
-	w W
+	w *bufio.Writer
 }
 
 var _ LogWriter = &logWriter[io.Writer]{}
 
 func NewLogWriter[W io.Writer](w W) *logWriter[W] {
-	return &logWriter[W]{w: w}
+	return &logWriter[W]{w: bufio.NewWriter(w)}
 }
 
 func (w *logWriter[W]) WriteEntry(et LogEntryType, data []byte) (int64, error) {
@@ -124,6 +125,10 @@ func (w *logWriter[W]) WriteEntry(et LogEntryType, data []byte) (int64, error) {
 	n, err := io.Copy(w.w, bytes.NewReader(data))
 	total += n
 	if err != nil {
+		return total, err
+	}
+
+	if err := w.w.Flush(); err != nil {
 		return total, err
 	}
 
@@ -147,7 +152,7 @@ func (w *logWriter[W]) writeEntryHeader(et LogEntryType, size uint32) (int64, er
 
 func ReadLogLen(r LogReader) (int, error) {
 	logIndex := 0
-	err := readLogEntries(r, func(_ LogEntry) error {
+	err := ReadLogEntries(r, func(_ LogEntry) error {
 		logIndex++
 		return nil
 	})
@@ -157,7 +162,7 @@ func ReadLogLen(r LogReader) (int, error) {
 	return logIndex, nil
 }
 
-func readLogEntries(r LogReader, fn func(LogEntry) error) error {
+func ReadLogEntries(r LogReader, fn func(LogEntry) error) error {
 	if r == nil {
 		return nil
 	}
@@ -170,11 +175,6 @@ func readLogEntries(r LogReader, fn func(LogEntry) error) error {
 		if err != nil {
 			return fmt.Errorf("read entry %d: %w", index, err)
 		}
-
-		if entry.Type() != LogEntryTypeBinary {
-			return fmt.Errorf("entry %d: %w", index, ErrUnexpectedEntryType)
-		}
-
 		if err := fn(entry); err != nil {
 			return fmt.Errorf("entry %d: %w", index, err)
 		}
@@ -182,7 +182,3 @@ func readLogEntries(r LogReader, fn func(LogEntry) error) error {
 
 	return nil
 }
-
-var (
-	ErrUnexpectedEntryType = errors.New("unexpected entry type")
-)

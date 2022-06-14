@@ -74,7 +74,7 @@ func OpenDatabase[
 	state := f.NewState(base, stateMutex.RLocker())
 
 	logLen := 0
-	err := readLogEntries(logR, func(entry LogEntry) error {
+	err := ReadLogEntries(logR, func(entry LogEntry) error {
 		r, err := entry.Reader()
 		if err != nil {
 			return fmt.Errorf("reader: %w", err)
@@ -205,7 +205,7 @@ func SpliceDatabase[
 	rebase := true
 	baseWritten := false
 
-	err := readLogEntries(logR, func(entry LogEntry) error {
+	err := ReadLogEntries(logR, func(entry LogEntry) error {
 		r, err := entry.Reader()
 		if err != nil {
 			return err
