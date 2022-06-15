@@ -67,17 +67,18 @@ func logWatchFile(logPath string, key []byte, offset int64) (int64, error) {
 	}
 	defer watcher.Close()
 
-	errCh := make(chan error, 0)
+	errCh := make(chan error, 1)
 	go func() {
 		for {
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok {
-					break
+					errCh <- nil
+					return
 				}
 				if event.Op&fsnotify.Remove == fsnotify.Remove {
 					errCh <- errFileRemove
-					break
+					return
 				}
 				if event.Op&fsnotify.Write != fsnotify.Write {
 					continue
@@ -86,15 +87,16 @@ func logWatchFile(logPath string, key []byte, offset int64) (int64, error) {
 				offset, err = logShowFile(logPath, key, offset)
 				if err != nil {
 					errCh <- err
-					break
+					return
 				}
 
 			case err, ok := <-watcher.Errors:
 				if !ok {
-					break
+					errCh <- nil
+					return
 				}
 				errCh <- fmt.Errorf("watcher: %w", err)
-				break
+				return
 			}
 		}
 	}()
