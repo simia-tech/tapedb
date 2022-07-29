@@ -18,13 +18,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/simia-tech/tapedb/v2/io/crypto"
 	"github.com/simia-tech/tapedb/v2/io/file"
 )
 
 func baseShow(path string, key []byte) error {
-	baseF, err := os.OpenFile(path, os.O_RDONLY, 0)
+	baseF, err := os.OpenFile(filepath.Join(path, file.FileNameBase), os.O_RDONLY, 0)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("open base %s: %w", path, err)
 	}
