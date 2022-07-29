@@ -28,6 +28,9 @@ var cli struct {
 			Follow bool `short:"f" help:"Follows the log and shows new entries immediately"`
 		} `cmd:"" help:"Shows the log"`
 	} `cmd:"" help:"Collection of log commands"`
+	Base struct {
+		Show struct{} `cmd:"" help:"Shows the base"`
+	} `cmd:"" help:"Collection of base commands"`
 }
 
 func main() {
@@ -45,6 +48,10 @@ func main() {
 	switch ctx.Command() {
 	case "log show":
 		if err := logShow(cli.Path, key, cli.Log.Show.Follow); err != nil {
+			log.Fatal(err)
+		}
+	case "base show":
+		if err := baseShow(cli.Path, key); err != nil {
 			log.Fatal(err)
 		}
 	default:

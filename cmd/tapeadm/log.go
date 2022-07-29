@@ -122,7 +122,7 @@ func logShowFile(logPath string, key []byte, offset int64) (int64, error) {
 	}
 	defer logF.Close()
 
-	offset, err = logF.Seek(offset, io.SeekStart)
+	_, err = logF.Seek(offset, io.SeekStart)
 	if err != nil {
 		return 0, err
 	}
