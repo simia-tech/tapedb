@@ -79,7 +79,7 @@ func (d *Deck[B, S, F]) Create(f F, path string, opts ...CreateOption) error {
 	d.databasesMutex.Lock()
 	defer d.databasesMutex.Unlock()
 
-	db, err := CreateDatabase[B, S, F](f, path, opts...)
+	db, err := CreateDatabase[B, S](f, path, opts...)
 	if err != nil {
 		return err
 	}
@@ -142,7 +142,7 @@ func (d *Deck[B, S, F]) LogLen(path string) (int, error) {
 	return ReadLogLen(filepath.Join(path, FileNameLog))
 }
 
-func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*Database[B, S]) error) error {
+func (d *Deck[B, S, F]) Open(f F, path string, opts []OpenOption) (*Database[B, S], func(), error) {
 	d.databasesMutex.Lock()
 
 	value, ok := d.databases.Get(path)
@@ -150,7 +150,7 @@ func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*D
 		db, err := OpenDatabase[B, S](f, path, opts...)
 		if err != nil {
 			d.databasesMutex.Unlock()
-			return err
+			return nil, nil, err
 		}
 		value = &entry[B, S]{db: db}
 		d.databases.Add(path, value)
@@ -160,22 +160,29 @@ func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*D
 	key, err := deriveKey(opts, entry.db.Meta())
 	if err != nil {
 		d.databasesMutex.Unlock()
-		return err
+		return nil, nil, err
 	}
 	if !bytes.Equal(entry.db.Key(), key) {
 		d.databasesMutex.Unlock()
-		return ErrInvalidKey
+		return nil, nil, ErrInvalidKey
 	}
 	entry.dbMutex.Lock()
-	defer entry.dbMutex.Unlock()
 
 	d.databasesMutex.Unlock()
 
-	if err := fn(entry.db); err != nil {
+	return entry.db, func() {
+		entry.dbMutex.Unlock()
+	}, nil
+}
+
+func (d *Deck[B, S, F]) WithOpen(f F, path string, opts []OpenOption, fn func(*Database[B, S]) error) error {
+	db, unlockFn, err := d.Open(f, path, opts)
+	if err != nil {
 		return err
 	}
+	defer unlockFn()
 
-	return nil
+	return fn(db)
 }
 
 func (d *Deck[B, S, F]) Splice(f F, path string, opts ...SpliceOption) error {
@@ -196,7 +203,7 @@ func (d *Deck[B, S, F]) Splice(f F, path string, opts ...SpliceOption) error {
 		d.databases.Remove(path)
 	}
 
-	if err := SpliceDatabase[B, S, F](f, path, opts...); err != nil {
+	if err := SpliceDatabase[B, S](f, path, opts...); err != nil {
 		return err
 	}
 

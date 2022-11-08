@@ -100,7 +100,7 @@ func CreateDatabase[
 
 	logCloseFn := logF.Close
 
-	db, err := tapeio.NewDatabase[B, S, F](f, logW)
+	db, err := tapeio.NewDatabase[B, S](f, logW)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func OpenDatabase[
 		return nil, fmt.Errorf("new line writer: %w", err)
 	}
 
-	db, err := tapeio.OpenDatabase[B, S, F](f, baseR, logR, logW)
+	db, err := tapeio.OpenDatabase[B, S](f, baseR, logR, logW)
 	if err != nil {
 		if errors.Is(err, crypto.ErrInvalidKey) {
 			return nil, ErrInvalidKey
@@ -413,7 +413,7 @@ func SpliceDatabase[
 		return nil
 	}
 
-	err = tapeio.SpliceDatabase[B, S, F](
+	err = tapeio.SpliceDatabase[B, S](
 		f,
 		newBaseWC, newLogW,
 		baseR, logR,
