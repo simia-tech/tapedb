@@ -66,7 +66,7 @@ func TestIO(t *testing.T) {
 		newBase := bytes.Buffer{}
 		newLog := io.LogBuffer{}
 
-		err := io.SpliceDatabase[*test.Base, *test.State, *test.Factory](
+		err := io.SpliceDatabase[*test.Base, *test.State](
 			test.NewFactory(),
 			&newBase, &newLog,
 			strings.NewReader(base), log,

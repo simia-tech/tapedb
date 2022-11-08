@@ -105,7 +105,7 @@ func TestDeck(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithCreateKey(testKey))
 		require.NoError(t, err)
 		require.NoError(t, db.Close())
 
@@ -135,7 +135,7 @@ func TestDeck(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithCreateKey(testKey))
 		require.NoError(t, err)
 		require.NoError(t, db.Close())
 

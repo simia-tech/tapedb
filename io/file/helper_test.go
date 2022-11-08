@@ -15,9 +15,11 @@
 package file_test
 
 import (
+	"crypto/rand"
 	"encoding/base64"
-	"io/ioutil"
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -36,8 +38,10 @@ var testInvalidKey = []byte{
 var testNonce = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
 func makeTempDir(tb testing.TB) (string, func()) {
-	path, err := ioutil.TempDir("", "tapedb-")
-	require.NoError(tb, err)
+	n := [8]byte{}
+	rand.Read(n[:])
+	path := filepath.Join(os.TempDir(), fmt.Sprintf("tapedb-%x", n[:]))
+	require.NoError(tb, os.MkdirAll(path, 0777))
 	return path, func() {
 		require.NoError(tb, os.RemoveAll(path))
 	}
@@ -50,17 +54,17 @@ func makeFileBase64(tb testing.TB, path, encodedContent string) {
 }
 
 func makeFile(tb testing.TB, path, content string) {
-	require.NoError(tb, ioutil.WriteFile(path, []byte(content), 0600))
+	require.NoError(tb, os.WriteFile(path, []byte(content), 0600))
 }
 
 func readFile(tb testing.TB, path string) string {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	require.NoError(tb, err)
 	return string(data)
 }
 
 func readFileBase64(tb testing.TB, path string) string {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	require.NoError(tb, err)
 	return base64.RawStdEncoding.EncodeToString(data)
 }

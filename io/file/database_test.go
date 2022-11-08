@@ -34,7 +34,7 @@ func TestCreateDatabase(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path)
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -48,7 +48,7 @@ func TestCreateDatabase(t *testing.T) {
 
 		makeFile(t, filepath.Join(path, file.FileNameLog), "test")
 
-		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path)
 		require.Nil(t, db)
 		assert.ErrorIs(t, err, file.ErrExisting)
 	})
@@ -57,7 +57,7 @@ func TestCreateDatabase(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithCreateKey(testKey))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -71,7 +71,7 @@ func TestOpenDatabase(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		db, err := file.OpenDatabase[*test.Base, *test.State](test.NewFactory(), path)
 		require.Nil(t, db)
 		assert.ErrorIs(t, err, file.ErrMissing)
 	})
@@ -82,7 +82,7 @@ func TestOpenDatabase(t *testing.T) {
 
 		makeFile(t, filepath.Join(path, file.FileNameBase), `{"value":3}`)
 
-		db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		db, err := file.OpenDatabase[*test.Base, *test.State](test.NewFactory(), path)
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -98,7 +98,7 @@ func TestOpenDatabase(t *testing.T) {
 		makeFile(t, filepath.Join(path, file.FileNameLog),
 			"\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n")
 
-		db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		db, err := file.OpenDatabase[*test.Base, *test.State](test.NewFactory(), path)
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -113,10 +113,10 @@ func TestOpenDatabase(t *testing.T) {
 		makeFileBase64(t, filepath.Join(path, file.FileNameLog),
 			"EAAANQAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDljzRVpqg0Xg5O3gChdsGaHUeOdn")
 
-		_, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testInvalidKey))
+		_, err := file.OpenDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithOpenKey(testInvalidKey))
 		assert.ErrorIs(t, err, file.ErrInvalidKey)
 
-		db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testKey))
+		db, err := file.OpenDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithOpenKey(testKey))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -134,7 +134,7 @@ func TestDatabaseApply(t *testing.T) {
 			makeFile(t, filepath.Join(path, file.FileNameBase), "{}")
 			makeFile(t, filepath.Join(path, file.FileNameLog), "\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n")
 
-			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+			db, err := file.OpenDatabase[*test.Base, *test.State](test.NewFactory(), path)
 			require.NoError(t, err)
 			defer db.Close()
 
@@ -153,7 +153,7 @@ func TestDatabaseApply(t *testing.T) {
 			makeFile(t, filepath.Join(path, file.FileNameBase), "{}")
 			makeFile(t, filepath.Join(path, file.FileNameLog), "\x00\x00\x00\x18\x0bcounter-inc{\"value\":1}\n")
 
-			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+			db, err := file.OpenDatabase[*test.Base, *test.State](test.NewFactory(), path)
 			require.NoError(t, err)
 			defer db.Close()
 
@@ -172,7 +172,7 @@ func TestDatabaseApply(t *testing.T) {
 			path, removeDir := makeTempDir(t)
 			defer removeDir()
 
-			db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+			db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path)
 			require.NoError(t, err)
 			defer db.Close()
 
@@ -206,7 +206,7 @@ func TestDatabaseApply(t *testing.T) {
 			makeFileBase64(t, filepath.Join(path, file.FileNameLog),
 				"EAAANQAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDljzRVpqg0Xg5O3gChdsGaHUeOdn")
 
-			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testKey))
+			db, err := file.OpenDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithOpenKey(testKey))
 			require.NoError(t, err)
 			defer db.Close()
 
@@ -225,7 +225,7 @@ func TestDatabaseApply(t *testing.T) {
 			makeFileBase64(t, filepath.Join(path, file.FileNameLog),
 				"EAAANQAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDljzRVpqg0Xg5O3gChdsGaHUeOdn")
 
-			db, err := file.OpenDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithOpenKey(testKey))
+			db, err := file.OpenDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithOpenKey(testKey))
 			require.NoError(t, err)
 			defer db.Close()
 
@@ -251,7 +251,7 @@ func TestDatabaseOpenPayload(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path)
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -274,7 +274,7 @@ func TestDatabaseOpenPayload(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithCreateKey(testKey))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -299,7 +299,7 @@ func TestDatabaseStatPayload(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path)
+		db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path)
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -318,7 +318,7 @@ func TestDatabaseStatPayload(t *testing.T) {
 		path, removeDir := makeTempDir(t)
 		defer removeDir()
 
-		db, err := file.CreateDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithCreateKey(testKey))
+		db, err := file.CreateDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithCreateKey(testKey))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -341,7 +341,7 @@ func TestDatabaseSplice(t *testing.T) {
 			defer removeDir()
 
 			require.NoError(t,
-				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path))
+				file.SpliceDatabase[*test.Base, *test.State](test.NewFactory(), path))
 
 			assert.Equal(t, "{\"value\":0}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
 			assert.Equal(t, "", readFile(t, filepath.Join(path, file.FileNameLog)))
@@ -355,7 +355,7 @@ func TestDatabaseSplice(t *testing.T) {
 			makeFile(t, filepath.Join(path, file.FileNameLog), "\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n")
 
 			require.NoError(t,
-				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path))
+				file.SpliceDatabase[*test.Base, *test.State](test.NewFactory(), path))
 
 			assert.Equal(t, "{\"value\":21}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
 			assert.Equal(t, "\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
@@ -371,7 +371,7 @@ func TestDatabaseSplice(t *testing.T) {
 			makeFile(t, filepath.Join(path, file.FilePrefixPayload+"456"), "test content")
 
 			require.NoError(t,
-				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path))
+				file.SpliceDatabase[*test.Base, *test.State](test.NewFactory(), path))
 
 			assert.NoFileExists(t, filepath.Join(path, file.FilePrefixPayload+"123"))
 			assert.FileExists(t, filepath.Join(path, file.FilePrefixPayload+"456"))
@@ -386,7 +386,7 @@ func TestDatabaseSplice(t *testing.T) {
 				"\x00\x00\x00\x18\x0bcounter-inc{\"value\":7}\n\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n")
 
 			require.NoError(t,
-				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](
+				file.SpliceDatabase[*test.Base, *test.State](
 					test.NewFactory(), path, file.WithRebaseChangeCount(1)))
 
 			assert.Equal(t, "{\"value\":28}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
@@ -404,7 +404,7 @@ func TestDatabaseSplice(t *testing.T) {
 			defer removeDir()
 
 			require.NoError(t,
-				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithTargetKey(testKey)))
+				file.SpliceDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithTargetKey(testKey)))
 
 			assert.Equal(t,
 				"AAAAAAAAAAAAAAAAHAAy9PEy9e7Drtm5B2Ih+wBioy9nEqoVlbSJnZT3",
@@ -420,7 +420,7 @@ func TestDatabaseSplice(t *testing.T) {
 			makeFile(t, filepath.Join(path, file.FileNameLog), "\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n")
 
 			require.NoError(t,
-				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithTargetKey(testKey)))
+				file.SpliceDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithTargetKey(testKey)))
 
 			assert.Equal(t,
 				"AAAAAAAAAAAAAAAAHQAy9PEy9e7Drtm7SxVq+PKr/ubvzKL1RyiHE+zmiQ",
@@ -444,7 +444,7 @@ func TestDatabaseSplice(t *testing.T) {
 				"EAAANAAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDli/MpzG8dh/UYqsEnrWaFYZLyk")
 
 			require.NoError(t,
-				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](test.NewFactory(), path, file.WithSourceKey(testKey)))
+				file.SpliceDatabase[*test.Base, *test.State](test.NewFactory(), path, file.WithSourceKey(testKey)))
 
 			assert.Equal(t, "{\"value\":21}\n", readFile(t, filepath.Join(path, file.FileNameBase)))
 			assert.Equal(t, "\x00\x00\x00\x18\x0bcounter-inc{\"value\":2}\n", readFile(t, filepath.Join(path, file.FileNameLog)))
@@ -464,7 +464,7 @@ func TestDatabaseSplice(t *testing.T) {
 				"EAAANAAAAAAAAAAAAAAAAEK16Cb378P+zuAUCxujxvzV2E4MDli/MpzG8dh/UYqsEnrWaFYZLyk")
 
 			require.NoError(t,
-				file.SpliceDatabase[*test.Base, *test.State, *test.Factory](
+				file.SpliceDatabase[*test.Base, *test.State](
 					test.NewFactory(),
 					path,
 					file.WithSourceKey(testKey), file.WithTargetKey(testKey)))
