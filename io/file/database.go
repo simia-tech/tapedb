@@ -229,6 +229,14 @@ func (db *Database[B, S]) Meta() Meta {
 	return db.meta
 }
 
+func (db *Database[B, S]) SetMeta(meta Meta) error {
+	if err := WriteMetaFile(filepath.Join(db.path, FileNameMeta), meta); err != nil {
+		return err
+	}
+	db.meta = meta
+	return nil
+}
+
 func (db *Database[B, S]) Key() []byte {
 	return db.key
 }

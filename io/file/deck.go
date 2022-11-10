@@ -123,9 +123,22 @@ func (d *Deck[B, S, F]) Meta(path string) (Meta, error) {
 		return meta, nil
 	}
 
-	d.databasesMutex.RUnlock()
+	d.databasesMutex.Unlock()
 
 	return ReadMetaFile(filepath.Join(path, FileNameMeta))
+}
+
+func (d *Deck[B, S, F]) SetMeta(path string, meta Meta) error {
+	d.databasesMutex.Lock()
+	defer d.databasesMutex.Unlock()
+
+	if value, ok := d.databases.Get(path); ok {
+		if err := value.(*entry[B, S]).db.SetMeta(meta); err != nil {
+			return err
+		}
+	}
+
+	return WriteMetaFile(filepath.Join(path, FileNameMeta), meta)
 }
 
 func (d *Deck[B, S, F]) LogLen(path string) (int, error) {

@@ -51,6 +51,21 @@ func ReadMeta(r io.Reader) (Meta, error) {
 	return Meta(mimeHeader), nil
 }
 
+func WriteMetaFile(path string, meta Meta) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return WriteMeta(f, meta)
+}
+
+func WriteMeta(w io.Writer, meta Meta) error {
+	_, err := meta.WriteTo(w)
+	return err
+}
+
 func (m Meta) SetBytes(key string, value []byte) {
 	m.Set(key, hex.EncodeToString(value))
 }
