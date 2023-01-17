@@ -123,7 +123,7 @@ func (d *Deck[B, S, F]) Meta(path string) (Meta, error) {
 		return meta, nil
 	}
 
-	d.databasesMutex.Unlock()
+	d.databasesMutex.RUnlock()
 
 	return ReadMetaFile(filepath.Join(path, FileNameMeta))
 }
