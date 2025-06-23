@@ -76,7 +76,7 @@ func CreateDatabase[
 
 	if len(meta) > 0 {
 		metaPath := filepath.Join(path, FileNameMeta)
-		metaF, err := createNewWriteOnlyFile(metaPath, options.fileMode)
+		metaF, err := createNewWriteOnlyFile(metaPath, options.fileMode, false)
 		if err != nil {
 			return nil, fmt.Errorf("create meta %s: %w", metaPath, err)
 		}
@@ -87,7 +87,7 @@ func CreateDatabase[
 	}
 
 	logPath := filepath.Join(path, FileNameLog)
-	logF, err := createNewWriteOnlyFile(logPath, options.fileMode)
+	logF, err := createNewWriteOnlyFile(logPath, options.fileMode, false)
 	if err != nil {
 		return nil, fmt.Errorf("create log %s: %w", logPath, err)
 	}
@@ -100,7 +100,7 @@ func CreateDatabase[
 
 	logCloseFn := logF.Close
 
-	db, err := tapeio.NewDatabase[B, S](f, logW)
+	db, err := tapeio.NewDatabase(f, logW)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func OpenDatabase[
 		return nil, fmt.Errorf("new line writer: %w", err)
 	}
 
-	db, err := tapeio.OpenDatabase[B, S](f, baseR, logR, logW)
+	db, err := tapeio.OpenDatabase(f, baseR, logR, logW)
 	if err != nil {
 		if errors.Is(err, crypto.ErrInvalidKey) {
 			return nil, ErrInvalidKey
@@ -345,7 +345,7 @@ func SpliceDatabase[
 			return fmt.Errorf("read meta: %w", err)
 		}
 		meta = m
-	} else if err != nil && !os.IsNotExist(err) {
+	} else if !os.IsNotExist(err) {
 		return err
 	}
 
@@ -385,14 +385,14 @@ func SpliceDatabase[
 	}
 
 	newBasePath := filepath.Join(path, FileNameNewBase)
-	newBaseF, err := createNewWriteOnlyFile(newBasePath, baseFileMode)
+	newBaseF, err := createNewWriteOnlyFile(newBasePath, baseFileMode, true)
 	if err != nil {
 		return fmt.Errorf("create base %s: %w", newBasePath, ErrExisting)
 	}
 	newBaseWC := io.WriteCloser(newBaseF)
 
 	newLogPath := filepath.Join(path, FileNameNewLog)
-	newLogF, err := createNewWriteOnlyFile(newLogPath, logFileMode)
+	newLogF, err := createNewWriteOnlyFile(newLogPath, logFileMode, true)
 	if err != nil {
 		return fmt.Errorf("create log %s: %w", newLogPath, ErrExisting)
 	}
@@ -421,7 +421,7 @@ func SpliceDatabase[
 		return nil
 	}
 
-	err = tapeio.SpliceDatabase[B, S](
+	err = tapeio.SpliceDatabase(
 		f,
 		newBaseWC, newLogW,
 		baseR, logR,

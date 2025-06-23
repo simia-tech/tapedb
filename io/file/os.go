@@ -5,8 +5,12 @@ import (
 	"os"
 )
 
-func createNewWriteOnlyFile(path string, mode os.FileMode) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_SYNC, mode)
+func createNewWriteOnlyFile(path string, mode os.FileMode, overwrite bool) (*os.File, error) {
+	flags := os.O_CREATE | os.O_EXCL | os.O_WRONLY | os.O_SYNC
+	if overwrite {
+		flags |= os.O_TRUNC
+	}
+	f, err := os.OpenFile(path, flags, mode)
 	if os.IsExist(err) {
 		return nil, ErrExisting
 	}
